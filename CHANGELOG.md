@@ -1,3 +1,7 @@
+# 0.0.2 - 4 Mar 2024
+Feature:
+- support Record, Tuple, Union
+
 # 0.0.1 - 4 Mar 2024
 Bug fix:
 - incorrect array bracket limit

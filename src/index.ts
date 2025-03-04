@@ -1,11 +1,13 @@
-import type { TAnySchema } from '@sinclair/typebox'
+import { TypeCompiler, type TypeCheck } from '@sinclair/typebox/compiler'
+import type { TAnySchema, TRecord } from '@sinclair/typebox'
 
 const Kind = Symbol.for('TypeBox.Kind')
-const OptionalKind = Symbol.for('TypeBox.Optional')
 
 const isSpecialProperty = (name: string) => /(\ |-|\t|\n)/.test(name)
 
-const joinProperty = (v1: string, v2: string, isOptional = false) => {
+const joinProperty = (v1: string, v2: string | number, isOptional = false) => {
+	if (typeof v2 === 'number') return `${v1}[${v2}]`
+
 	if (isSpecialProperty(v2)) return `${v1}${isOptional ? '?.' : ''}["${v2}"]`
 
 	return `${v1}${isOptional ? '?' : ''}.${v2}`
@@ -52,6 +54,110 @@ interface Instruction {
 	optionalsInArray: string[][]
 	parentIsOptional: boolean
 	array: number
+	unions: TypeCheck<any>[][]
+	unionKeys: Record<string, 1>
+	/**
+	 * TypeCompiler is required when using Union
+	 *
+	 * Left as opt-in to reduce bundle size
+	 * many end-user doesn't use Union
+	 *
+	 * @default undefined
+	 */
+	TypeCompiler?: typeof TypeCompiler
+	typeCompilerWanred?: boolean
+}
+
+const handleRecord = (
+	schema: TRecord,
+	property: string,
+	instruction: Instruction
+) => {
+	const child =
+		schema.patternProperties['^(.*)$'] ??
+		schema.patternProperties[Object.keys(schema.patternProperties)[0]]
+
+	if (!child) return property
+
+	const i = instruction.array
+	instruction.array++
+
+	return (
+		`(()=>{` +
+		`const ar${i}s=Object.keys(${property}),` +
+		`ar${i}v={};` +
+		`for(let i=0;i<ar${i}s.length;i++){` +
+		`const ar${i}p=${property}[ar${i}s[i]];` +
+		`ar${i}v[ar${i}s[i]]=${mirror(child, `ar${i}p`, instruction)}` +
+		`}` +
+		`return ar${i}v` +
+		`})()`
+	)
+}
+
+const handleTuple = (
+	schema: TAnySchema[],
+	property: string,
+	instruction: Instruction
+) => {
+	const i = instruction.array
+	instruction.array++
+
+	const isRoot = property === 'v' && !instruction.unions.length
+
+	let v = ''
+	if (!isRoot) v = `(()=>{`
+
+	v += `const ar${i}v=[`
+
+	for (let i = 0; i < schema.length; i++) {
+		if (i !== 0) v += ','
+
+		v += mirror(
+			schema[i],
+			joinProperty(property, i, instruction.parentIsOptional),
+			instruction
+		)
+	}
+
+	v += `];`
+
+	if (!isRoot) v += `return ar${i}v})()`
+
+	return v
+}
+
+const handleUnion = (
+	schemas: TAnySchema[],
+	property: string,
+	instruction: Instruction
+) => {
+	if (instruction.TypeCompiler === undefined) {
+		if (!instruction.typeCompilerWanred) {
+			console.warn(
+				new Error("TypeBox's TypeCompiler is required to use Union")
+			)
+			instruction.typeCompilerWanred = true
+		}
+
+		return property
+	}
+
+	instruction.unionKeys[property] = 1
+
+	const ui = instruction.unions.length
+	const typeChecks = (instruction.unions[ui] = <TypeCheck<any>[]>[])
+
+	let v = `(()=>{\n`
+
+	for (let i = 0; i < schemas.length; i++) {
+		typeChecks.push(TypeCompiler.Compile(schemas[i]))
+		v += `if(d.unions[${ui}][${i}].Check(${property})){return ${mirror(schemas[i], property, instruction)}}\n`
+	}
+
+	v += `return undefined` + `})()`
+
+	return v
 }
 
 const mirror = (
@@ -61,15 +167,26 @@ const mirror = (
 ): string => {
 	if (!schema) return ''
 
-	const isRoot = property === 'v'
+	const isRoot = property === 'v' && !instruction.unions.length
 
-	if (isRoot && schema.type !== 'object' && schema.type !== 'array')
+	if (
+		isRoot &&
+		schema.type !== 'object' &&
+		schema.type !== 'array' &&
+		!schema.anyOf
+	)
 		return `return v`
 
 	let v = ''
 
 	switch (schema.type) {
 		case 'object':
+			if (schema[Kind as any] === 'Record') {
+				v = handleRecord(schema as TRecord, property, instruction)
+
+				break
+			}
+
 			schema = mergeObjectIntersection(schema)
 
 			v += '{'
@@ -81,7 +198,8 @@ const mirror = (
 				const key = keys[i]
 
 				let isOptional =
-					schema.required && !schema.required.includes(key)
+					(schema.required && !schema.required.includes(key)) ||
+					Array.isArray(schema.properties[key].anyOf)
 
 				const name = joinProperty(
 					property,
@@ -125,17 +243,19 @@ const mirror = (
 			break
 
 		case 'array':
-			const i = instruction.array
-			instruction.array++
-
 			if (
 				schema.items.type !== 'object' &&
 				schema.items.type !== 'array'
 			) {
-				v = property
+				if (Array.isArray(schema.items))
+					v = handleTuple(schema.items, property, instruction)
+				else v = property
 
 				break
 			}
+
+			const i = instruction.array
+			instruction.array++
 
 			if (!isRoot) v = `(()=>{`
 
@@ -167,7 +287,14 @@ const mirror = (
 			break
 
 		default:
+			if (Array.isArray(schema.anyOf)) {
+				v = handleUnion(schema.anyOf, property, instruction)
+
+				break
+			}
+
 			v = property
+			break
 	}
 
 	if (!isRoot) return v
@@ -178,24 +305,44 @@ const mirror = (
 
 	for (let i = 0; i < instruction.optionals.length; i++) {
 		const key = instruction.optionals[i]
+		const prop = key.slice(1)
 
-		v += `if(${key}===undefined)delete x${key.slice(1)}\n`
+		v += `if(${key}===undefined`
+
+		if (instruction.unionKeys[key]) v += `||x${prop}===undefined`
+
+		v += `)delete x?${prop}\n`
 	}
 
 	return `${v}return x`
 }
 
 export const createMirror = <T extends TAnySchema>(
-	schema: T
+	schema: T,
+	{ TypeCompiler }: Pick<Instruction, 'TypeCompiler'> = {}
 ): ((v: T['static']) => T['static']) => {
+	const unions = <Instruction['unions']>[]
+
 	const f = mirror(schema, 'v', {
 		optionals: [],
 		optionalsInArray: [],
 		array: 0,
-		parentIsOptional: false
+		parentIsOptional: false,
+		unions,
+		unionKeys: {},
+		TypeCompiler
 	})
 
-	return Function('v', f) as any
+	if (!unions.length) return Function('v', f) as any
+
+	const fn = `return function mirror(v){${f}}`
+
+	return Function(
+		'd',
+		fn
+	)({
+		unions
+	}) as any
 }
 
 export default createMirror

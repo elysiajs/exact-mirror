@@ -12,7 +12,9 @@ export const benchmark = <T extends TAnySchema>(
 	value: T['static']
 	// options?: Parameters<typeof createMirror>[1]
 ) => {
-	const mirror = createMirror(model)
+	const mirror = createMirror(model, {
+		TypeCompiler
+	})
 
 	if (process.env.DEBUG) {
 		console.log(mirror.toString())
