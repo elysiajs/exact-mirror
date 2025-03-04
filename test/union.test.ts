@@ -165,4 +165,28 @@ describe('Union', () => {
 		// @ts-expect-error
 		isUndefined(shape, 'a')
 	})
+
+	it('handle undefined union', () => {
+		const shape = t.Union([
+			t.Undefined(),
+			t.Object({
+				name: t.String(),
+				job: t.String(),
+				trait: t.Optional(t.String())
+			})
+		])
+
+		isEqual(shape, undefined)
+
+		isEqual(shape, {
+			name: 'a',
+			job: 'b',
+			trait: 'c'
+		})
+
+		isEqual(shape, {
+			name: 'a',
+			job: 'b'
+		})
+	})
 })

@@ -1,3 +1,7 @@
+# 0.0.4 - 4 Mar 2024
+Bug fix:
+- handle undefined union
+
 # 0.0.3 - 4 Mar 2024
 Bug fix:
 - handle root array

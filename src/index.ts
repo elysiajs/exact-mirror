@@ -152,7 +152,14 @@ const handleUnion = (
 
 	for (let i = 0; i < schemas.length; i++) {
 		typeChecks.push(TypeCompiler.Compile(schemas[i]))
-		v += `if(d.unions[${ui}][${i}].Check(${property})){return ${mirror(schemas[i], property, instruction)}}\n`
+		v += `if(d.unions[${ui}][${i}].Check(${property})){return ${mirror(
+			schemas[i],
+			property,
+			{
+				...instruction,
+				parentIsOptional: true
+			}
+		)}}\n`
 	}
 
 	v += `return undefined` + `})()`
@@ -312,7 +319,7 @@ const mirror = (
 
 		if (instruction.unionKeys[key]) v += `||x${prop}===undefined`
 
-		v += `)delete x?${prop}\n`
+		v += `)delete x${prop.charCodeAt(0) !== 63 ? '?' : ''}${prop}\n`
 	}
 
 	return `${v}return x`
