@@ -1,0 +1,58 @@
+{
+	"name": "exact-mirror",
+	"version": "0.0.0",
+	"description": "Mirror exact value to TypeBox/OpenAPI model",
+	"license": "MIT",
+	"scripts": {
+		"dev": "bun run --watch example/index.ts",
+		"test": "bun test && npm run test:node",
+		"test:node": "npm install --prefix ./test/node/cjs/ && npm install --prefix ./test/node/esm/ && node ./test/node/cjs/index.js && node ./test/node/esm/index.js",
+		"build": "bun build.ts",
+		"release": "npm run build && npm run test && npm publish --access public"
+	},
+	"peerDependencies": {
+		"@sinclair/typebox": "^0.34.15"
+	},
+	"peerDependenciesMeta": {
+		"@sinclair/typebox": {
+			"optional": true
+		}
+	},
+	"devDependencies": {
+		"@types/bun": "1.2.2",
+		"elysia": "^1.2.11",
+		"eslint": "9.6.0",
+		"mitata": "^1.0.33",
+		"tsup": "^8.1.0",
+		"tsx": "^4.19.2",
+		"typescript": "^5.5.3"
+	},
+	"main": "./dist/cjs/index.js",
+	"module": "./dist/index.mjs",
+	"types": "./dist/index.d.ts",
+	"exports": {
+		"./package.json": "./package.json",
+		".": {
+			"types": "./dist/index.d.ts",
+			"import": "./dist/index.mjs",
+			"require": "./dist/cjs/index.js"
+		}
+	},
+	"keywords": [
+		"elysia",
+		"exact",
+		"mirror",
+		"typebox"
+	],
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/elysiajs/exact-mirror"
+	},
+	"author": {
+		"name": "saltyAom",
+		"url": "https://github.com/SaltyAom",
+		"email": "saltyaom@gmail.com"
+	},
+	"homepage": "https://github.com/elysiajs/exact-mirror",
+	"bugs": "https://github.com/elysiajs/exact-mirror/issues"
+}
