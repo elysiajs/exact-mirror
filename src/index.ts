@@ -110,10 +110,14 @@ const mirror = (
 
 				if (i !== 0) v += ','
 
-				v += `${encodeProperty(key)}:${mirror(child, name, {
-					...instruction,
-					parentIsOptional: isOptional
-				})}`
+				v += `${encodeProperty(key)}:${isOptional ? `${name}===undefined?undefined:` : ''}${mirror(
+					child,
+					name,
+					{
+						...instruction,
+						parentIsOptional: isOptional
+					}
+				)}`
 			}
 
 			v += '}'
@@ -146,11 +150,13 @@ const mirror = (
 			if (optionals) {
 				// optional index
 				for (let oi = 0; oi < optionals.length; oi++) {
-					const pointer = `ar${i}p.${optionals[oi]}`
+					// since pointer is checked in object case with ternary as undefined, this is not need
+					// const pointer = `ar${i}p.${optionals[oi]}`
+
 					const target = `ar${i}v[i].${optionals[oi]}`
 
 					// we can add semi-colon here because it delimit recursive mirror
-					v += `;if(${pointer}===undefined)delete ${target}`
+					v += `;if(${target}===undefined)delete ${target}`
 				}
 			}
 
@@ -188,8 +194,6 @@ export const createMirror = <T extends TAnySchema>(
 		array: 0,
 		parentIsOptional: false
 	})
-
-	console.log(f)
 
 	return Function('v', f) as any
 }

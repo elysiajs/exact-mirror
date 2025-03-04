@@ -2,6 +2,7 @@
 Bug fix:
 - incorrect array bracket limit
 - handle deep nested optional object property
+- using pointer instead of created value for
 
 # 0.0.0 - 4 Mar 2024
 Feature:

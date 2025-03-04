@@ -1,6 +1,6 @@
 {
 	"name": "exact-mirror",
-	"version": "0.0.0",
+	"version": "0.0.1",
 	"description": "Mirror exact value to TypeBox/OpenAPI model",
 	"license": "MIT",
 	"scripts": {
