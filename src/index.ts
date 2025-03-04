@@ -249,6 +249,7 @@ const mirror = (
 			) {
 				if (Array.isArray(schema.items))
 					v = handleTuple(schema.items, property, instruction)
+				else if (isRoot) return 'return v'
 				else v = property
 
 				break

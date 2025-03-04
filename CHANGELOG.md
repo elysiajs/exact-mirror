@@ -1,3 +1,7 @@
+# 0.0.3 - 4 Mar 2024
+Bug fix:
+- handle root array
+
 # 0.0.2 - 4 Mar 2024
 Feature:
 - support Record, Tuple, Union
