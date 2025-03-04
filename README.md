@@ -4,6 +4,18 @@ Enforce value to TypeBox/OpenAPI model
 
 By providing model ahead of time, the library will generate a function to mirror a value to an exact type
 
+```
+$ bun benchmarks/small
+
+clk: ~3.13 GHz
+cpu: Apple M1 Max
+runtime: bun 1.2.4 (arm64-darwin)
+
+summary
+  Exact Mirror
+   556.23x faster than TypeBox Value.Clean
+```
+
 ## Installation
 
 ```bash
