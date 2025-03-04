@@ -5,10 +5,10 @@ const OptionalKind = Symbol.for('TypeBox.Optional')
 
 const isSpecialProperty = (name: string) => /(\ |-|\t|\n)/.test(name)
 
-const joinProperty = (v1: string, v2: string) => {
-	if (isSpecialProperty(v2)) return `${v1}["${v2}"]`
+const joinProperty = (v1: string, v2: string, isOptional = false) => {
+	if (isSpecialProperty(v2)) return `${v1}${isOptional ? '?.' : ''}["${v2}"]`
 
-	return `${v1}.${v2}`
+	return `${v1}${isOptional ? '?' : ''}.${v2}`
 }
 
 const encodeProperty = (v: string) => (isSpecialProperty(v) ? `"${v}"` : v)
@@ -50,6 +50,7 @@ export const mergeObjectIntersection = (schema: TAnySchema): TAnySchema => {
 interface Instruction {
 	optionals: string[]
 	optionalsInArray: string[][]
+	parentIsOptional: boolean
 	array: number
 }
 
@@ -78,15 +79,25 @@ const mirror = (
 			const keys = Object.keys(schema.properties)
 			for (let i = 0; i < keys.length; i++) {
 				const key = keys[i]
-				const name = joinProperty(property, key)
 
-				if (!schema.required.includes(key)) {
+				let isOptional =
+					schema.required && !schema.required.includes(key)
+
+				const name = joinProperty(
+					property,
+					key,
+					instruction.parentIsOptional
+				)
+
+				if (isOptional) {
 					const index = instruction.array
 
 					if (property.startsWith('ar')) {
+						const refName = name.slice(name.indexOf('.') + 1)
 						const array = instruction.optionalsInArray
-						if (array[index]) array[index].push(name.slice(5))
-						else array[index] = [name.slice(5)]
+
+						if (array[index]) array[index].push(refName)
+						else array[index] = [refName]
 					} else {
 						instruction.optionals.push(name)
 					}
@@ -99,7 +110,10 @@ const mirror = (
 
 				if (i !== 0) v += ','
 
-				v += `${encodeProperty(key)}:${mirror(child, name, instruction)}`
+				v += `${encodeProperty(key)}:${mirror(child, name, {
+					...instruction,
+					parentIsOptional: isOptional
+				})}`
 			}
 
 			v += '}'
@@ -126,22 +140,23 @@ const mirror = (
 				`ar${i}v=new Array(${property}.length);` +
 				`for(let i=0;i<ar${i}s.length;i++){` +
 				`const ar${i}p=ar${i}s[i];` +
-				`ar${i}v[i]=${mirror(schema.items, `ar${i}p`, instruction)};`
+				`ar${i}v[i]=${mirror(schema.items, `ar${i}p`, instruction)}`
 
 			const optionals = instruction.optionalsInArray[i + 1]
 			if (optionals) {
 				// optional index
 				for (let oi = 0; oi < optionals.length; oi++) {
-					const key = `ar${i}v[i].${optionals[oi]}`
+					const pointer = `ar${i}p.${optionals[oi]}`
+					const target = `ar${i}v[i].${optionals[oi]}`
 
-					if (oi !== 0) v += ';'
-					v += `if(${key}===undefined)delete ${key}`
+					// we can add semi-colon here because it delimit recursive mirror
+					v += `;if(${pointer}===undefined)delete ${target}`
 				}
 			}
 
 			v += `}`
 
-			if (!isRoot) v += `}return ar${i}v})()`
+			if (!isRoot) v += `return ar${i}v})()`
 
 			break
 
@@ -170,8 +185,11 @@ export const createMirror = <T extends TAnySchema>(
 	const f = mirror(schema, 'v', {
 		optionals: [],
 		optionalsInArray: [],
-		array: 0
+		array: 0,
+		parentIsOptional: false
 	})
+
+	console.log(f)
 
 	return Function('v', f) as any
 }
