@@ -1,7 +1,9 @@
 import { TypeCompiler, type TypeCheck } from '@sinclair/typebox/compiler'
 import type { TAnySchema, TRecord } from '@sinclair/typebox'
+import { Insert } from '@sinclair/typebox/build/cjs/value'
 
 const Kind = Symbol.for('TypeBox.Kind')
+const OptionalKind = Symbol.for('TypeBox.Optional')
 
 const isSpecialProperty = (name: string) => /(\ |-|\t|\n)/.test(name)
 
@@ -66,6 +68,7 @@ interface Instruction {
 	 */
 	TypeCompiler?: typeof TypeCompiler
 	typeCompilerWanred?: boolean
+	definitions: Record<string, TAnySchema>
 }
 
 const handleRecord = (
@@ -175,6 +178,16 @@ const mirror = (
 	if (!schema) return ''
 
 	const isRoot = property === 'v' && !instruction.unions.length
+
+	if (
+		Kind in schema &&
+		schema[Kind] === 'Import' &&
+		schema.$ref in schema.$defs
+	)
+		return mirror(schema.$defs[schema.$ref], property, {
+			...instruction,
+			definitions: Object.assign(instruction.definitions, schema.$defs)
+		})
 
 	if (
 		isRoot &&
@@ -295,6 +308,13 @@ const mirror = (
 			break
 
 		default:
+			if (schema.$ref && schema.$ref in instruction.definitions)
+				return mirror(
+					instruction.definitions[schema.$ref],
+					property,
+					instruction
+				)
+
 			if (Array.isArray(schema.anyOf)) {
 				v = handleUnion(schema.anyOf, property, instruction)
 
@@ -327,7 +347,10 @@ const mirror = (
 
 export const createMirror = <T extends TAnySchema>(
 	schema: T,
-	{ TypeCompiler }: Pick<Instruction, 'TypeCompiler'> = {}
+	{
+		TypeCompiler,
+		definitions = {}
+	}: Partial<Pick<Instruction, 'TypeCompiler' | 'definitions'>> = {}
 ): ((v: T['static']) => T['static']) => {
 	const unions = <Instruction['unions']>[]
 
@@ -338,7 +361,8 @@ export const createMirror = <T extends TAnySchema>(
 		parentIsOptional: false,
 		unions,
 		unionKeys: {},
-		TypeCompiler
+		TypeCompiler,
+		definitions
 	})
 
 	if (!unions.length) return Function('v', f) as any
