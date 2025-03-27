@@ -278,13 +278,19 @@ const mirror = (
 			const i = instruction.array
 			instruction.array++
 
-			if (!isRoot) v = `(()=>{`
+			let reference = property
+
+			if (isRoot) v = `const ar${i}v=new Array(${property}.length);`
+			else {
+				reference = `ar${i}s`
+				v =
+					`((${reference})=>{` +
+					`const ar${i}v=new Array(${reference}.length);`
+			}
 
 			v +=
-				`const ar${i}s=${property},` +
-				`ar${i}v=new Array(${property}.length);` +
-				`for(let i=0;i<ar${i}s.length;i++){` +
-				`const ar${i}p=ar${i}s[i];` +
+				`for(let i=0;i<${reference}.length;i++){` +
+				`const ar${i}p=${reference}[i];` +
 				`ar${i}v[i]=${mirror(schema.items, `ar${i}p`, instruction)}`
 
 			const optionals = instruction.optionalsInArray[i + 1]
@@ -303,7 +309,7 @@ const mirror = (
 
 			v += `}`
 
-			if (!isRoot) v += `return ar${i}v})()`
+			if (!isRoot) v += `return ar${i}v})(${property})`
 
 			break
 
