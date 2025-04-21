@@ -8,11 +8,11 @@ const OptionalKind = Symbol.for('TypeBox.Optional')
 const isSpecialProperty = (name: string) => /(\ |-|\t|\n)/.test(name)
 
 const joinProperty = (v1: string, v2: string | number, isOptional = false) => {
-	if (typeof v2 === 'number') return `${v1}[${v2}]`
+	if (typeof v2 === 'number') return `${v1}?.[${v2}]`
 
-	if (isSpecialProperty(v2)) return `${v1}${isOptional ? '?.' : ''}["${v2}"]`
+	if (isSpecialProperty(v2)) return `${v1}${true ? '?.' : ''}["${v2}"]`
 
-	return `${v1}${isOptional ? '?' : ''}.${v2}`
+	return `${v1}${true ? '?' : ''}.${v2}`
 }
 
 const encodeProperty = (v: string) => (isSpecialProperty(v) ? `"${v}"` : v)

@@ -1,3 +1,7 @@
+# 0.0.7 - 22 Apr 2025
+Improvement:
+- Use ?. to access undefined property
+
 # 0.0.6 - 27 Mar 2025
 Improvement:
 - Improve array performance by avoiding unnecessary closure reference
