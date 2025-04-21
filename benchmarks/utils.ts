@@ -9,7 +9,7 @@ import type { TAnySchema } from '@sinclair/typebox'
 
 export const benchmark = <T extends TAnySchema>(
 	model: T,
-	value: T['static']
+	value: T['static'],
 	options?: Parameters<typeof createMirror>[1]
 ) => {
 	const mirror = createMirror(model, {
