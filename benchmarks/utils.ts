@@ -10,7 +10,7 @@ import type { TAnySchema } from '@sinclair/typebox'
 export const benchmark = <T extends TAnySchema>(
 	model: T,
 	value: T['static']
-	// options?: Parameters<typeof createMirror>[1]
+	options?: Parameters<typeof createMirror>[1]
 ) => {
 	const mirror = createMirror(model, {
 		TypeCompiler
@@ -20,15 +20,15 @@ export const benchmark = <T extends TAnySchema>(
 		console.log(mirror.toString())
 	}
 
-	// if (
-	// 	JSON.stringify(mirror(value)) !==
-	// 	JSON.stringify(Value.Clean(model, value))
-	// ) {
-	// 	console.log(mirror(value))
-	// 	console.log('---')
-	// 	console.log(mirror.toString())
-	// 	throw new Error('Invalid result')
-	// }
+	if (
+		JSON.stringify(mirror(value)) !==
+		JSON.stringify(Value.Clean(model, value))
+	) {
+		console.log(mirror(value))
+		console.log('---')
+		console.log(mirror.toString())
+		throw new Error('Invalid result')
+	}
 
 	compact(() => {
 		barplot(() => {
