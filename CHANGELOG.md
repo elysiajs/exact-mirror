@@ -1,3 +1,7 @@
+# 0.0.8 - 24 Apr 2025
+Feature:
+- Add sanitize options
+
 # 0.0.7 - 22 Apr 2025
 Improvement:
 - Use ?. to access undefined property

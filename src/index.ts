@@ -1,9 +1,7 @@
 import { TypeCompiler, type TypeCheck } from '@sinclair/typebox/compiler'
 import type { TAnySchema, TRecord } from '@sinclair/typebox'
-import { Insert } from '@sinclair/typebox/build/cjs/value'
 
 const Kind = Symbol.for('TypeBox.Kind')
-const OptionalKind = Symbol.for('TypeBox.Optional')
 
 const isSpecialProperty = (name: string) => /(\ |-|\t|\n)/.test(name)
 
@@ -16,6 +14,12 @@ const joinProperty = (v1: string, v2: string | number, isOptional = false) => {
 }
 
 const encodeProperty = (v: string) => (isSpecialProperty(v) ? `"${v}"` : v)
+
+const sanitize = (key: string, sanitize = 0) => {
+	let hof = ''
+	for (let i = sanitize - 1; i >= 0; i--) hof += `d.h${i}(`
+	return hof + key + ')'.repeat(sanitize)
+}
 
 export const mergeObjectIntersection = (schema: TAnySchema): TAnySchema => {
 	if (
@@ -51,13 +55,16 @@ export const mergeObjectIntersection = (schema: TAnySchema): TAnySchema => {
 	return newSchema
 }
 
-interface Instruction {
+type MaybeArray<T> = T | T[]
+
+export interface Instruction {
 	optionals: string[]
 	optionalsInArray: string[][]
 	parentIsOptional: boolean
 	array: number
 	unions: TypeCheck<any>[][]
 	unionKeys: Record<string, 1>
+	sanitize: MaybeArray<(v: string) => string> | undefined
 	/**
 	 * TypeCompiler is required when using Union
 	 *
@@ -327,7 +334,11 @@ const mirror = (
 				break
 			}
 
-			v = property
+			v =
+				schema.type === 'string' && !schema.const && !schema.trusted
+					? sanitize(property, instruction.sanitize?.length)
+					: property
+
 			break
 	}
 
@@ -355,10 +366,15 @@ export const createMirror = <T extends TAnySchema>(
 	schema: T,
 	{
 		TypeCompiler,
-		definitions = {}
-	}: Partial<Pick<Instruction, 'TypeCompiler' | 'definitions'>> = {}
+		definitions = {},
+		sanitize
+	}: Partial<
+		Pick<Instruction, 'TypeCompiler' | 'definitions' | 'sanitize'>
+	> = {}
 ): ((v: T['static']) => T['static']) => {
 	const unions = <Instruction['unions']>[]
+
+	if (typeof sanitize === 'function') sanitize = [sanitize]
 
 	const f = mirror(schema, 'v', {
 		optionals: [],
@@ -368,18 +384,24 @@ export const createMirror = <T extends TAnySchema>(
 		unions,
 		unionKeys: {},
 		TypeCompiler,
-		definitions
+		definitions,
+		sanitize
 	})
 
-	if (!unions.length) return Function('v', f) as any
+	if (!unions.length && !sanitize?.length) return Function('v', f) as any
 
-	const fn = `return function mirror(v){${f}}`
+	let hof: Record<string, Instruction['sanitize'][0]> | undefined
+	if (sanitize?.length) {
+		hof = {}
+		for (let i = 0; i < sanitize.length; i++) hof[`h${i}`] = sanitize[i]
+	}
 
 	return Function(
 		'd',
-		fn
+		`return function mirror(v){${f}}`
 	)({
-		unions
+		unions,
+		...hof
 	}) as any
 }
 

@@ -1,6 +1,5 @@
 import { t } from 'elysia'
 import { createMirror } from '../src/index'
-import { TypeCompiler } from '@sinclair/typebox/compiler'
 
 const shape = t.Object({
 	type: t.Literal('email'),
@@ -21,9 +20,23 @@ const shape = t.Object({
 
 // console.log(t.Optional(t.String()))
 
-const value = {} satisfies typeof shape.static
+const value = {
+	type: 'email',
+	name: '&',
+	details: {
+		from: 'c',
+		subject: 'c'
+	}
+} satisfies typeof shape.static
 
 const mirror = createMirror(shape, {
+	sanitize: [
+		(v) => {
+			if (v === '&') return 'no'
+
+			return v
+		}
+	]
 	// TypeCompiler
 })
 
