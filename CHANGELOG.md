@@ -1,3 +1,7 @@
+# 0.0.9 - 24 Apr 2025
+Bug fix:
+- handle sanitize on top-level string
+
 # 0.0.8 - 24 Apr 2025
 Feature:
 - Add sanitize options

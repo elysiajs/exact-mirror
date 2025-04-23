@@ -15,7 +15,9 @@ const joinProperty = (v1: string, v2: string | number, isOptional = false) => {
 
 const encodeProperty = (v: string) => (isSpecialProperty(v) ? `"${v}"` : v)
 
-const sanitize = (key: string, sanitize = 0) => {
+const sanitize = (key: string, sanitize = 0, schema: TAnySchema) => {
+	if (schema.type !== 'string' || schema.const || schema.trusted) return key
+
 	let hof = ''
 	for (let i = sanitize - 1; i >= 0; i--) hof += `d.h${i}(`
 	return hof + key + ')'.repeat(sanitize)
@@ -201,8 +203,9 @@ const mirror = (
 		schema.type !== 'object' &&
 		schema.type !== 'array' &&
 		!schema.anyOf
-	)
-		return `return v`
+	) {
+		return `return ${sanitize('v', instruction.sanitize?.length, schema)}`
+	}
 
 	let v = ''
 
@@ -334,10 +337,7 @@ const mirror = (
 				break
 			}
 
-			v =
-				schema.type === 'string' && !schema.const && !schema.trusted
-					? sanitize(property, instruction.sanitize?.length)
-					: property
+			v = sanitize(property, instruction.sanitize?.length, schema)
 
 			break
 	}
