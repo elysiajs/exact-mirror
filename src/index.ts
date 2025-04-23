@@ -390,7 +390,7 @@ export const createMirror = <T extends TAnySchema>(
 
 	if (!unions.length && !sanitize?.length) return Function('v', f) as any
 
-	let hof: Record<string, Instruction['sanitize'][0]> | undefined
+	let hof: Record<string, Function> | undefined
 	if (sanitize?.length) {
 		hof = {}
 		for (let i = 0; i < sanitize.length; i++) hof[`h${i}`] = sanitize[i]
