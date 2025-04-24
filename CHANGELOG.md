@@ -1,3 +1,7 @@
+# 0.1.1 - 24 Apr 2025
+Bug fix:
+- handle reference of an union in an array
+
 # 0.1.0 - 24 Apr 2025
 Improvement:
 - handle recursion from t.Ref and t.Recursive

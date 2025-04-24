@@ -1,5 +1,6 @@
 import { TypeCompiler, type TypeCheck } from '@sinclair/typebox/compiler'
 import type { TAnySchema, TModule, TRecord } from '@sinclair/typebox'
+import { deepMatch } from 'bun'
 
 const Kind = Symbol.for('TypeBox.Kind')
 const Hint = Symbol.for('TypeBox.Hint')
@@ -146,6 +147,43 @@ const handleTuple = (
 	return v
 }
 
+export function deepClone<T>(source: T, weak = new WeakMap<object, any>()): T {
+	if (
+		source === null ||
+		typeof source !== 'object' ||
+		typeof source === 'function'
+	)
+		return source
+
+	// Circular‑reference guard
+	if (weak.has(source as object)) return weak.get(source as object)
+
+	if (Array.isArray(source)) {
+		const copy: any[] = new Array(source.length)
+		weak.set(source, copy)
+
+		for (let i = 0; i < source.length; i++)
+			copy[i] = deepClone(source[i], weak)
+
+		return copy as any
+	}
+
+	if (typeof source === 'object') {
+		const keys = Object.keys(source).concat(
+			Object.getOwnPropertySymbols(source) as any[]
+		)
+
+		const cloned: Partial<T> = {}
+
+		for (const key of keys)
+			cloned[key as keyof T] = deepClone((source as any)[key], weak)
+
+		return cloned as T
+	}
+
+	return source
+}
+
 const handleUnion = (
 	schemas: TAnySchema[],
 	property: string,
@@ -171,23 +209,38 @@ const handleUnion = (
 
 	let v = `(()=>{\n`
 
-	for (let i = 0; i < schemas.length; i++) {
-		let type = schemas[i]
+	const unwrapRef = (type: TAnySchema) => {
+		if (!(Kind in type) || !type.$ref) return type
 
-		if (Kind in type && type.$ref) {
-			if (type[Kind] === 'This') type = instruction.definitions[type.$ref]
-			else if (type[Kind] === 'Ref') {
-				if (!instruction.modules)
-					console.warn(
-						new Error(
-							'[exact-mirror] modules is required when using nested cyclic reference'
-						)
+		if (type[Kind] === 'This') {
+			return deepClone(instruction.definitions[type.$ref])
+		} else if (type[Kind] === 'Ref') {
+			if (!instruction.modules)
+				console.warn(
+					new Error(
+						'[exact-mirror] modules is required when using nested cyclic reference'
 					)
-				else {
-					// @ts-ignore
-					type = instruction.modules.Import(type.$ref)
-				}
-			}
+				)
+			else
+				return instruction.modules.Import(
+					type.$ref
+				) as any as TAnySchema
+		}
+
+		return type
+	}
+
+	for (let i = 0; i < schemas.length; i++) {
+		let type = unwrapRef(schemas[i])
+
+		if (Array.isArray(type.anyOf))
+			for (let i = 0; i < type.anyOf.length; i++)
+				type.anyOf[i] = unwrapRef(type.anyOf[i])
+		else if (type.items) {
+			if (Array.isArray(type.items))
+				for (let i = 0; i < type.items.length; i++)
+					type.items[i] = unwrapRef(type.items[i])
+			else type.items = unwrapRef(type.items)
 		}
 
 		typeChecks.push(TypeCompiler.Compile(type))
@@ -321,7 +374,7 @@ const mirror = (
 						schema.items[Kind] === 'This')
 				)
 					v = mirror(
-						instruction.definitions[schema.items.$ref],
+						deepClone(instruction.definitions[schema.items.$ref]),
 						property,
 						{
 							...instruction,

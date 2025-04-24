@@ -47,4 +47,54 @@ describe('Recursive', () => {
 
 		isEqual(shape, value)
 	})
+
+	it('handle reference in array', () => {
+		const shape = t.Recursive((This) =>
+			t.Object({
+				type: t.String(),
+				data: t.Array(This)
+			})
+		)
+
+		const value = {
+			type: 'yea',
+			data: [
+				{
+					type: 'ok',
+					data: [
+						{
+							type: 'cool',
+							data: []
+						}
+					]
+				}
+			]
+		} satisfies typeof shape.static
+
+		isEqual(shape, value)
+	})
+
+	it('handle reference of an union in an array', () => {
+		const shape = t.Recursive((This) =>
+			t.Object({
+				type: t.String(),
+				data: t.Union([t.Nullable(This), t.Array(This)])
+			})
+		)
+
+		const value = {
+			type: 'yea',
+			data: {
+				type: 'ok',
+				data: [
+					{
+						type: 'cool',
+						data: null
+					}
+				]
+			}
+		} satisfies typeof shape.static
+
+		isEqual(shape, value)
+	})
 })
