@@ -2,6 +2,8 @@ import { t } from 'elysia'
 
 import createMirror from '../src'
 
+import { TypeCompiler } from '@sinclair/typebox/compiler'
+
 import { describe, it, expect } from 'bun:test'
 import { isEqual } from './utils'
 
@@ -96,6 +98,55 @@ describe('Ref', () => {
 		expect(
 			createMirror(shape, {
 				definitions
+			})(value)
+		).toEqual(value)
+	})
+
+	it('handle recursion', () => {
+		const shape = t.Module({
+			a: t.Object({ type: t.String(), a: t.Nullable(t.Ref('a')) })
+		})
+
+		const actual = shape.Import('a')
+
+		const value = {
+			type: 'a',
+			a: {
+				type: 'a',
+				a: {
+					type: 'a',
+					a: null
+				}
+			}
+		} satisfies typeof actual.static
+
+		expect(
+			createMirror(shape.Import('a'), {
+				TypeCompiler,
+				modules: shape
+			})(value)
+		).toEqual(value)
+	})
+
+	it('handle recusion array', () => {
+		const shape = t.Module({
+			a: t.Object({ type: t.String(), a: t.Array(t.Ref('a')) })
+		})
+
+		const actual = shape.Import('a')
+
+		const value = {
+			type: 'a',
+			a: [
+				{ type: 'a', a: [{ type: 'a', a: [] }] },
+				{ type: 'a', a: [{ type: 'a', a: [] }] }
+			]
+		} satisfies typeof actual.static
+
+		expect(
+			createMirror(shape.Import('a'), {
+				TypeCompiler,
+				modules: shape
 			})(value)
 		).toEqual(value)
 	})

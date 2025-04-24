@@ -1,3 +1,7 @@
+# 0.1.0 - 24 Apr 2025
+Improvement:
+- handle recursion from t.Ref and t.Recursive
+
 # 0.0.9 - 24 Apr 2025
 Bug fix:
 - handle sanitize on top-level string

@@ -1,16 +1,17 @@
 import { TypeCompiler, type TypeCheck } from '@sinclair/typebox/compiler'
-import type { TAnySchema, TRecord } from '@sinclair/typebox'
+import type { TAnySchema, TModule, TRecord } from '@sinclair/typebox'
 
 const Kind = Symbol.for('TypeBox.Kind')
+const Hint = Symbol.for('TypeBox.Hint')
 
 const isSpecialProperty = (name: string) => /(\ |-|\t|\n)/.test(name)
 
 const joinProperty = (v1: string, v2: string | number, isOptional = false) => {
-	if (typeof v2 === 'number') return `${v1}?.[${v2}]`
+	if (typeof v2 === 'number') return `${v1}[${v2}]`
 
-	if (isSpecialProperty(v2)) return `${v1}${true ? '?.' : ''}["${v2}"]`
+	if (isSpecialProperty(v2)) return `${v1}${isOptional ? '?.' : ''}["${v2}"]`
 
-	return `${v1}${true ? '?' : ''}.${v2}`
+	return `${v1}${isOptional ? '?' : ''}.${v2}`
 }
 
 const encodeProperty = (v: string) => (isSpecialProperty(v) ? `"${v}"` : v)
@@ -77,7 +78,13 @@ export interface Instruction {
 	 */
 	TypeCompiler?: typeof TypeCompiler
 	typeCompilerWanred?: boolean
+	modules?: TModule<any, any>
 	definitions: Record<string, TAnySchema>
+	recursion: number
+	/**
+	 * @default 8
+	 */
+	recursionLimit: number
 }
 
 const handleRecord = (
@@ -147,7 +154,9 @@ const handleUnion = (
 	if (instruction.TypeCompiler === undefined) {
 		if (!instruction.typeCompilerWanred) {
 			console.warn(
-				new Error("TypeBox's TypeCompiler is required to use Union")
+				new Error(
+					"[exact-mirror] TypeBox's TypeCompiler is required to use Union"
+				)
 			)
 			instruction.typeCompilerWanred = true
 		}
@@ -163,12 +172,31 @@ const handleUnion = (
 	let v = `(()=>{\n`
 
 	for (let i = 0; i < schemas.length; i++) {
-		typeChecks.push(TypeCompiler.Compile(schemas[i]))
+		let type = schemas[i]
+
+		if (Kind in type && type.$ref) {
+			if (type[Kind] === 'This') type = instruction.definitions[type.$ref]
+			else if (type[Kind] === 'Ref') {
+				if (!instruction.modules)
+					console.warn(
+						new Error(
+							'[exact-mirror] modules is required when using nested cyclic reference'
+						)
+					)
+				else {
+					// @ts-ignore
+					type = instruction.modules.Import(type.$ref)
+				}
+			}
+		}
+
+		typeChecks.push(TypeCompiler.Compile(type))
 		v += `if(d.unions[${ui}][${i}].Check(${property})){return ${mirror(
-			schemas[i],
+			type,
 			property,
 			{
 				...instruction,
+				recursion: instruction.recursion + 1,
 				parentIsOptional: true
 			}
 		)}}\n`
@@ -203,11 +231,15 @@ const mirror = (
 		schema.type !== 'object' &&
 		schema.type !== 'array' &&
 		!schema.anyOf
-	) {
+	)
 		return `return ${sanitize('v', instruction.sanitize?.length, schema)}`
-	}
+
+	if (instruction.recursion >= instruction.recursionLimit) return property
 
 	let v = ''
+
+	if (schema.$id && Hint in schema)
+		instruction.definitions[schema.$id] = schema
 
 	switch (schema.type) {
 		case 'object':
@@ -263,6 +295,7 @@ const mirror = (
 					name,
 					{
 						...instruction,
+						recursion: instruction.recursion + 1,
 						parentIsOptional: isOptional
 					}
 				)}`
@@ -277,12 +310,29 @@ const mirror = (
 				schema.items.type !== 'object' &&
 				schema.items.type !== 'array'
 			) {
-				if (Array.isArray(schema.items))
+				if (Array.isArray(schema.items)) {
 					v = handleTuple(schema.items, property, instruction)
-				else if (isRoot) return 'return v'
-				else v = property
-
-				break
+					break
+				} else if (isRoot) return 'return v'
+				else if (
+					Kind in schema.items &&
+					schema.items.$ref &&
+					(schema.items[Kind] === 'Ref' ||
+						schema.items[Kind] === 'This')
+				)
+					v = mirror(
+						instruction.definitions[schema.items.$ref],
+						property,
+						{
+							...instruction,
+							parentIsOptional: true,
+							recursion: instruction.recursion + 1
+						}
+					)
+				else {
+					v = property
+					break
+				}
 			}
 
 			const i = instruction.array
@@ -366,10 +416,19 @@ export const createMirror = <T extends TAnySchema>(
 	schema: T,
 	{
 		TypeCompiler,
-		definitions = {},
-		sanitize
+		modules,
+		definitions,
+		sanitize,
+		recursionLimit = 8
 	}: Partial<
-		Pick<Instruction, 'TypeCompiler' | 'definitions' | 'sanitize'>
+		Pick<
+			Instruction,
+			| 'TypeCompiler'
+			| 'definitions'
+			| 'sanitize'
+			| 'modules'
+			| 'recursionLimit'
+		>
 	> = {}
 ): ((v: T['static']) => T['static']) => {
 	const unions = <Instruction['unions']>[]
@@ -384,9 +443,15 @@ export const createMirror = <T extends TAnySchema>(
 		unions,
 		unionKeys: {},
 		TypeCompiler,
-		definitions,
-		sanitize
+		modules,
+		// @ts-ignore private property
+		definitions: definitions ?? modules?.$defs ?? {},
+		sanitize,
+		recursion: 0,
+		recursionLimit
 	})
+
+	// console.log(f)
 
 	if (!unions.length && !sanitize?.length) return Function('v', f) as any
 
