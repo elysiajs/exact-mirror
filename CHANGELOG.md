@@ -1,6 +1,6 @@
 # 0.1.2 - 8 May Apr 2025
-Bug fix:
-- return union value regardless
+Feature:
+- add `removeUnknownUnionType`
 
 # 0.1.1 - 24 Apr 2025
 Bug fix:
