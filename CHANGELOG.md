@@ -1,3 +1,7 @@
+# 0.1.2 - 8 May Apr 2025
+Bug fix:
+- return union value regardless
+
 # 0.1.1 - 24 Apr 2025
 Bug fix:
 - handle reference of an union in an array

@@ -86,6 +86,15 @@ export interface Instruction {
 	 * @default 8
 	 */
 	recursionLimit: number
+	/**
+	 * If incorrect type is passed to Union value, should it be removed?
+	 *
+	 * If you check a value later, it's recommended to set this to `false`
+	 * otherwise, set this to true
+	 *
+	 * @default false
+	 */
+	removeUnknownUnionType: boolean
 }
 
 const handleRecord = (
@@ -189,6 +198,13 @@ const handleUnion = (
 	property: string,
 	instruction: Instruction
 ) => {
+	// TODO: optimize null
+	// if (schemas.length === 2 && schemas.find((x) => x.type === 'null')) {
+	// 	const schema = schemas.find((x) => x.type !== 'null')
+
+	// 	if (schema) return mirror(schema, property, instruction)
+	// }
+
 	if (instruction.TypeCompiler === undefined) {
 		if (!instruction.typeCompilerWanred) {
 			console.warn(
@@ -255,7 +271,12 @@ const handleUnion = (
 		)}}\n`
 	}
 
-	v += `return undefined` + `})()`
+	// unknown type, return as-is (this is a default intended behavior)
+	// because it's expected that exact-mirror input should always be a correct value
+	// returning an incorrect value then later checked is expected
+	v +=
+		`return ${instruction.removeUnknownUnionType ? 'undefined' : property}` +
+		`})()`
 
 	return v
 }
@@ -472,7 +493,8 @@ export const createMirror = <T extends TAnySchema>(
 		modules,
 		definitions,
 		sanitize,
-		recursionLimit = 8
+		recursionLimit = 8,
+		removeUnknownUnionType = false
 	}: Partial<
 		Pick<
 			Instruction,
@@ -481,6 +503,7 @@ export const createMirror = <T extends TAnySchema>(
 			| 'sanitize'
 			| 'modules'
 			| 'recursionLimit'
+			| 'removeUnknownUnionType'
 		>
 	> = {}
 ): ((v: T['static']) => T['static']) => {
@@ -501,10 +524,9 @@ export const createMirror = <T extends TAnySchema>(
 		definitions: definitions ?? modules?.$defs ?? {},
 		sanitize,
 		recursion: 0,
-		recursionLimit
+		recursionLimit,
+		removeUnknownUnionType
 	})
-
-	// console.log(f)
 
 	if (!unions.length && !sanitize?.length) return Function('v', f) as any
 

@@ -11,7 +11,7 @@ describe('Union', () => {
 		isEqual(shape, 'saltyaom')
 		isEqual(shape, 1)
 		// @ts-expect-error
-		isUndefined(shape, true)
+		isEqual(shape, true)
 	})
 
 	it('handle union object', () => {
@@ -58,7 +58,7 @@ describe('Union', () => {
 		isEqual(shape, 1)
 
 		// @ts-expect-error
-		isUndefined(shape, 'a')
+		isEqual(shape, 'a')
 	})
 
 	it('handle union object with optional', () => {
@@ -116,7 +116,7 @@ describe('Union', () => {
 		isEqual(shape, 1)
 
 		// @ts-expect-error
-		isUndefined(shape, 'a')
+		isEqual(shape, 'a')
 	})
 
 	it('handle nested union', () => {
@@ -163,7 +163,7 @@ describe('Union', () => {
 		isEqual(shape, 1)
 
 		// @ts-expect-error
-		isUndefined(shape, 'a')
+		isEqual(shape, 'a')
 	})
 
 	it('handle undefined union', () => {
@@ -188,5 +188,30 @@ describe('Union', () => {
 			name: 'a',
 			job: 'b'
 		})
+	})
+
+	it('return shape regardless of correctness', () => {
+		const shape = t.Object({
+			foo: t.Optional(
+				t.Nullable(
+					t.Object({
+						a: t.Number({
+							error: 'Must be a number'
+						})
+					})
+				)
+			)
+		})
+
+		const value = {
+			// @ts-expect-error
+			foo: 123
+		} satisfies typeof shape.static
+
+		isEqual(
+			shape,
+			// @ts-expect-error
+			value
+		)
 	})
 })
