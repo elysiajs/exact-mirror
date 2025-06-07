@@ -1,5 +1,3 @@
-import { t } from 'elysia'
-
 import { Value } from '@sinclair/typebox/value'
 import { TypeCompiler } from '@sinclair/typebox/compiler'
 import { type TAnySchema } from '@sinclair/typebox'
@@ -17,7 +15,7 @@ export const isEqual = <T extends TAnySchema>(
 		createMirror(shape, {
 			TypeCompiler
 		})(value)
-	).toEqual(expected)
+	).toStrictEqual(expected)
 
 export const notEqual = <T extends TAnySchema>(
 	shape: T,
@@ -28,7 +26,7 @@ export const notEqual = <T extends TAnySchema>(
 		createMirror(shape, {
 			TypeCompiler
 		})(value)
-	).not.toEqual(expected)
+	).not.toStrictEqual(expected)
 
 export const isUndefined = <T extends TAnySchema>(
 	shape: T,
@@ -38,7 +36,7 @@ export const isUndefined = <T extends TAnySchema>(
 		createMirror(shape, {
 			TypeCompiler
 		})(value)
-	).toEqual(undefined)
+	).toStrictEqual(undefined)
 
 export const isEqualToTypeBox = <T extends TAnySchema>(
 	shape: T,
@@ -49,4 +47,4 @@ export const isEqualToTypeBox = <T extends TAnySchema>(
 		createMirror(shape, {
 			TypeCompiler
 		})(value)
-	).toEqual(Value.Clean(shape, value))
+	).toStrictEqual(Value.Clean(shape, value))
