@@ -3,19 +3,11 @@ import { createMirror } from '../src/index'
 import { TypeCompiler } from '@sinclair/typebox/compiler'
 
 const shape = t.Object({
-	foo: t.Optional(
-		t.Nullable(
-			t.Object({
-				a: t.Number({
-					error: 'Must be a number'
-				})
-			})
-		)
-	)
+	'64x64': t.String()
 })
 
 const value = {
-	foo: 123
+	'64x64': 'a'
 } satisfies typeof shape.static
 
 const mirror = createMirror(shape, {

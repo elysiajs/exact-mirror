@@ -5,7 +5,8 @@ import { deepMatch } from 'bun'
 const Kind = Symbol.for('TypeBox.Kind')
 const Hint = Symbol.for('TypeBox.Hint')
 
-const isSpecialProperty = (name: string) => /(\ |-|\t|\n)/.test(name)
+const isSpecialProperty = (name: string) =>
+	/(\ |-|\t|\n)/.test(name) || !isNaN(+name[0])
 
 const joinProperty = (v1: string, v2: string | number, isOptional = false) => {
 	if (typeof v2 === 'number') return `${v1}[${v2}]`

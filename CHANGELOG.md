@@ -1,3 +1,7 @@
+# 0.1.3 - 31 Jul 2025
+Bug fix:
+- handle property start with number
+
 # 0.1.2 - 8 May Apr 2025
 Feature:
 - add `removeUnknownUnionType`

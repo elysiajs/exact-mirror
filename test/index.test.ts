@@ -219,4 +219,22 @@ describe('Core', () => {
 
 		isEqual(shape, value, expected)
 	})
+
+	it('handle key starts with number', () => {
+		const shape = t.Object({
+			'64x64': t.String()
+		})
+
+		const value = {
+			'64x64': 'one',
+			// @ts-ignore
+			additional: 'b'
+		} satisfies typeof shape.static
+
+		const expected = {
+			'64x64': 'one'
+		} satisfies typeof shape.static
+
+		isEqual(shape, value, expected)
+	})
 })
