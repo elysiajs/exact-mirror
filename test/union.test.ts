@@ -2,7 +2,7 @@ import { t } from 'elysia'
 
 import { describe, it } from 'bun:test'
 
-import { isEqual, notEqual, isUndefined } from './utils'
+import { isEqual, notEqual } from './utils'
 
 describe('Union', () => {
 	it('handle union at root', () => {

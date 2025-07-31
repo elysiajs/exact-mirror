@@ -1,6 +1,6 @@
 import { t } from 'elysia'
 
-import { describe, it, mock } from 'bun:test'
+import { describe, it } from 'bun:test'
 import { isEqual } from './utils'
 
 describe('Core', () => {
