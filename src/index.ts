@@ -112,17 +112,28 @@ const handleRecord = (
 	const i = instruction.array
 	instruction.array++
 
-	return (
+	let v =
 		`(()=>{` +
 		`const ar${i}s=Object.keys(${property}),` +
 		`ar${i}v={};` +
 		`for(let i=0;i<ar${i}s.length;i++){` +
 		`const ar${i}p=${property}[ar${i}s[i]];` +
-		`ar${i}v[ar${i}s[i]]=${mirror(child, `ar${i}p`, instruction)}` +
-		`}` +
+		`ar${i}v[ar${i}s[i]]=${mirror(child, `ar${i}p`, instruction)}`;
+
+	const optionals = instruction.optionalsInArray[i + 1]
+	if (optionals) {
+		for (let oi = 0; oi < optionals.length; oi++) {
+			const target = `ar${i}v[ar${i}s[i]].${optionals[oi]}`
+
+			v += `;if(${target}===undefined)delete ${target}`
+		}
+	}
+
+	v += `}` +
 		`return ar${i}v` +
 		`})()`
-	)
+
+	return v
 }
 
 const handleTuple = (
@@ -335,6 +346,9 @@ const mirror = (
 				const key = keys[i]
 
 				let isOptional =
+					// all fields are optional
+					(!schema.required) ||
+					// field is explicitly required
 					(schema.required && !schema.required.includes(key)) ||
 					Array.isArray(schema.properties[key].anyOf)
 
@@ -466,9 +480,11 @@ const mirror = (
 
 	if (!isRoot) return v
 
-	if (schema.type === 'array') return `${v}return ar0v`
-
-	v = `const x=${v}\n`
+	if (schema.type === 'array') { // actually Tuple
+		v = `${v}const x=ar0v;`
+	} else {
+		v = `const x=${v}\n`
+	}
 
 	for (let i = 0; i < instruction.optionals.length; i++) {
 		const key = instruction.optionals[i]
@@ -478,7 +494,9 @@ const mirror = (
 
 		if (instruction.unionKeys[key]) v += `||x${prop}===undefined`
 
-		v += `)delete x${prop.charCodeAt(0) !== 63 ? '?' : ''}${prop}\n`
+		// 63 is '?'
+		const shouldQuestion = prop.charCodeAt(0) !== 63 && schema.type !== 'array'
+		v += `)delete x${shouldQuestion ? '?' : ''}${prop}\n`
 	}
 
 	return `${v}return x`
