@@ -1,3 +1,7 @@
+# 0.1.4 - 6 Aug 2025
+Bug fix:
+- handle nested additionalProperties
+
 # 0.1.3 - 31 Jul 2025
 Bug fix:
 - handle property start with number

@@ -328,7 +328,7 @@ const mirror = (
 
 			v += '{'
 
-			if (schema.additionalProperties) v += `...${property}`
+			if (schema.additionalProperties) v += `...${property},`
 
 			const keys = Object.keys(schema.properties)
 			for (let i = 0; i < keys.length; i++) {
@@ -359,9 +359,6 @@ const mirror = (
 				}
 
 				const child = schema.properties[key]
-
-				if (schema.additionalProperties && child.type !== 'object')
-					continue
 
 				if (i !== 0) v += ','
 
@@ -547,33 +544,3 @@ export const createMirror = <T extends TAnySchema>(
 }
 
 export default createMirror
-
-// const shape = t.Object({
-// 	a: t.Nullable(
-// 		t.Object({
-// 			a: t.String()
-// 		})
-// 	)
-// })
-
-// const shape = t.Object({
-// 	a: t.String(),
-// 	social: t.Optional(
-// 		t.Object({
-// 			facebook: t.Nullable(t.String()),
-// 			twitter: t.Nullable(t.String()),
-// 			youtube: t.Nullable(t.String())
-// 		})
-// 	)
-// })
-
-// const stringify = createaccelerate(shape)
-
-// console.log(
-// 	stringify({
-// 		a: 'a',
-// 		social: {
-// 			a: 'a',
-// 		}
-// 	})
-// )
