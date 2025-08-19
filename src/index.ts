@@ -495,7 +495,7 @@ const mirror = (
 		// 63 is '?'
 		const shouldQuestion =
 			prop.charCodeAt(0) !== 63 && schema.type !== 'array'
-		v += `)delete x${shouldQuestion ? '?' : ''}${prop}\n`
+		v += `)delete x${shouldQuestion ? (prop.charCodeAt(0) === 91 ? '?.' : '?') : ''}${prop}\n`
 	}
 
 	return `${v}return x`

@@ -2,24 +2,17 @@ import { t } from 'elysia'
 import { createMirror } from '../src/index'
 import { TypeCompiler } from '@sinclair/typebox/compiler'
 
-const shape = t.Object(
-	{
-		keys: t.Array(t.Object({ a: t.Number() }))
-	},
-	{
-		additionalProperties: true
-	}
-)
+const shape = t.Object({
+	'is-admin': t.Union([
+		t.Boolean(),
+		t.String({
+			format: 'boolean'
+		})
+	])
+})
 
 const value = {
-	keys: [
-		{
-			a: 1,
-			// @ts-expect-error
-			b: 2
-		}
-	],
-	extra: true
+	'is-admin': true
 } satisfies typeof shape.static
 
 const mirror = createMirror(shape, {

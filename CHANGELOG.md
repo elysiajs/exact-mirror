@@ -1,3 +1,7 @@
+# 0.1.6 - 18 Aug 2025
+Bug fix:
+- handle optional property with special character
+
 # 0.1.5 - 6 Aug 2025
 Bug fix:
 - [#23](https://github.com/elysiajs/exact-mirror/pull/23) optional properties not deleted

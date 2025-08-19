@@ -269,4 +269,21 @@ describe('Core', () => {
 			extra: true
 		})
 	})
+
+	it('handle optional property with special character', () => {
+		const shape = t.Object({
+			'is-admin': t.Union([
+				t.Boolean(),
+				t.String({
+					format: 'boolean'
+				})
+			])
+		})
+
+		const value = {
+			'is-admin': true
+		} satisfies typeof shape.static
+
+		isEqual(shape, value)
+	})
 })
