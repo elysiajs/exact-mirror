@@ -1,3 +1,10 @@
+# 0.2.0 - 21 Aug 2025
+Feature:
+- add `createMirrorCode` to generate mirror code from schema
+
+Improvement:
+- inline unionCheck function to reduce closure reference
+
 # 0.1.6 - 18 Aug 2025
 Bug fix:
 - handle optional property with special character

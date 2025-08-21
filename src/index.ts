@@ -22,7 +22,7 @@ const sanitize = (key: string, sanitize = 0, schema: TAnySchema) => {
 	if (schema.type !== 'string' || schema.const || schema.trusted) return key
 
 	let hof = ''
-	for (let i = sanitize - 1; i >= 0; i--) hof += `d.h${i}(`
+	for (let i = sanitize - 1; i >= 0; i--) hof += `sanitize[${i}](`
 	return hof + key + ')'.repeat(sanitize)
 }
 
@@ -67,7 +67,7 @@ export interface Instruction {
 	optionalsInArray: string[][]
 	parentIsOptional: boolean
 	array: number
-	unions: TypeCheck<any>[][]
+	unions: string[][]
 	unionKeys: Record<string, 1>
 	sanitize: MaybeArray<(v: string) => string> | undefined
 	/**
@@ -202,6 +202,13 @@ export function deepClone<T>(source: T, weak = new WeakMap<object, any>()): T {
 	return source
 }
 
+// Rename typebox function
+const renameFunction = (v: string, name: string) => {
+	if (!v.startsWith('return')) v = v.replace(/check_T0/g, `_${name}`)
+
+	return v.replace('return function check(', `function ${name}(`)
+}
+
 const handleUnion = (
 	schemas: TAnySchema[],
 	property: string,
@@ -230,7 +237,7 @@ const handleUnion = (
 	instruction.unionKeys[property] = 1
 
 	const ui = instruction.unions.length
-	const typeChecks = (instruction.unions[ui] = <TypeCheck<any>[]>[])
+	const typeChecks = (instruction.unions[ui] = <string[]>[])
 
 	let v = `(()=>{\n`
 
@@ -268,16 +275,14 @@ const handleUnion = (
 			else type.items = unwrapRef(type.items)
 		}
 
-		typeChecks.push(TypeCompiler.Compile(type))
-		v += `if(d.unions[${ui}][${i}].Check(${property})){return ${mirror(
-			type,
-			property,
-			{
-				...instruction,
-				recursion: instruction.recursion + 1,
-				parentIsOptional: true
-			}
-		)}}\n`
+		const name = `un_${ui}_${i}`
+		typeChecks.push(renameFunction(TypeCompiler.Code(type), name))
+
+		v += `if(${name}(${property})){return ${mirror(type, property, {
+			...instruction,
+			recursion: instruction.recursion + 1,
+			parentIsOptional: true
+		})}}\n`
 	}
 
 	// unknown type, return as-is (this is a default intended behavior)
@@ -501,6 +506,71 @@ const mirror = (
 	return `${v}return x`
 }
 
+export const createMirrorCode = (
+	schema: TAnySchema,
+	{
+		TypeCompiler,
+		modules,
+		definitions,
+		sanitize,
+		recursionLimit = 8,
+		removeUnknownUnionType = false,
+		name = 'mirror'
+	}: Partial<
+		Pick<
+			Instruction,
+			| 'TypeCompiler'
+			| 'definitions'
+			| 'sanitize'
+			| 'modules'
+			| 'recursionLimit'
+			| 'removeUnknownUnionType'
+		> & {
+			name?: string
+		}
+	> = {}
+): string | [string, ((v: string) => string)[]] => {
+	const unions = <Instruction['unions']>[]
+
+	if (typeof sanitize === 'function') sanitize = [sanitize]
+
+	let f = mirror(schema, 'v', {
+		optionals: [],
+		optionalsInArray: [],
+		array: 0,
+		parentIsOptional: false,
+		unions,
+		unionKeys: {},
+		TypeCompiler,
+		modules,
+		// @ts-ignore private property
+		definitions: definitions ?? modules?.$defs ?? {},
+		sanitize,
+		recursion: 0,
+		recursionLimit,
+		removeUnknownUnionType
+	})
+
+	if (unions.length) {
+		let header = ''
+
+		for (let i = 0; i < unions.length; i++) {
+			for (let j = 0; j < unions[i].length; j++)
+				header += unions[i][j] + '\n'
+		}
+
+		f = header + f
+
+		unions.length = 0 // clear unions to avoid memory leak
+	}
+
+	f = `function ${name}(v){${f}}`
+
+	if (!sanitize?.length) return f
+
+	return [`function ${name}(sanitize){return ${f}}`, sanitize] as const
+}
+
 export const createMirror = <T extends TAnySchema>(
 	schema: T,
 	{
@@ -522,42 +592,18 @@ export const createMirror = <T extends TAnySchema>(
 		>
 	> = {}
 ): ((v: T['static']) => T['static']) => {
-	const unions = <Instruction['unions']>[]
-
-	if (typeof sanitize === 'function') sanitize = [sanitize]
-
-	const f = mirror(schema, 'v', {
-		optionals: [],
-		optionalsInArray: [],
-		array: 0,
-		parentIsOptional: false,
-		unions,
-		unionKeys: {},
+	const code = createMirrorCode(schema, {
 		TypeCompiler,
 		modules,
-		// @ts-ignore private property
-		definitions: definitions ?? modules?.$defs ?? {},
+		definitions,
 		sanitize,
-		recursion: 0,
 		recursionLimit,
 		removeUnknownUnionType
 	})
 
-	if (!unions.length && !sanitize?.length) return Function('v', f) as any
+	if (typeof code === 'string') return Function(`return ${code}`)() as any
 
-	let hof: Record<string, Function> | undefined
-	if (sanitize?.length) {
-		hof = {}
-		for (let i = 0; i < sanitize.length; i++) hof[`h${i}`] = sanitize[i]
-	}
-
-	return Function(
-		'd',
-		`return function mirror(v){${f}}`
-	)({
-		unions,
-		...hof
-	}) as any
+	return Function(`return ${code[0]}`)()(code[1])
 }
 
 export default createMirror

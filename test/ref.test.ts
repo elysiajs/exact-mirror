@@ -151,7 +151,7 @@ describe('Ref', () => {
 		).toEqual(value)
 	})
 
-	it('handle', () => {
+	it('handle Import', () => {
 		const shape = t.Module({
 			a: t.Object({
 				type: t.String(),

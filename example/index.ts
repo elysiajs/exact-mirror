@@ -1,24 +1,35 @@
 import { t } from 'elysia'
-import { createMirror } from '../src/index'
+import createMirror, { createMirrorCode } from '../src/index'
+
 import { TypeCompiler } from '@sinclair/typebox/compiler'
 
-const shape = t.Object({
-	'is-admin': t.Union([
-		t.Boolean(),
-		t.String({
-			format: 'boolean'
-		})
-	])
-})
+const shape = t.Recursive((This) =>
+	t.Object({
+		type: t.String(),
+		data: t.Union([t.Nullable(This), t.Array(This)])
+	})
+)
 
 const value = {
-	'is-admin': true
+	type: 'yea',
+	data: {
+		type: 'ok',
+		data: [
+			{
+				type: 'cool',
+				data: null
+			}
+		]
+	}
 } satisfies typeof shape.static
 
 const mirror = createMirror(shape, {
-	TypeCompiler
+	TypeCompiler,
+	sanitize: (a) => a
 })
 
-console.dir(mirror(value), {
-	depth: null
-})
+// console.log(mirror.toString())
+
+// console.dir(mirror(value), {
+// 	depth: null
+// })
