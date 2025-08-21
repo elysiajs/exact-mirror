@@ -1,3 +1,7 @@
+# 0.2.1 - 22 Aug 2025
+Bug fix:
+- handle property name with dot
+
 # 0.2.0 - 21 Aug 2025
 Feature:
 - add `createMirrorCode` to generate mirror code from schema

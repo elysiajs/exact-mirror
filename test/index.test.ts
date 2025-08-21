@@ -286,4 +286,24 @@ describe('Core', () => {
 
 		isEqual(shape, value)
 	})
+
+	it('handle name with hyphen or dot', () => {
+		const shape = t.Object({
+			'a.b': t.String(),
+			'a-b': t.String()
+		})
+
+		const value = {
+			'a.b': 'one',
+			// @ts-ignore
+			'a-b': 'b'
+		} satisfies typeof shape.static
+
+		const expected = {
+			'a.b': 'one',
+			'a-b': 'b'
+		} satisfies typeof shape.static
+
+		isEqual(shape, value, expected)
+	})
 })

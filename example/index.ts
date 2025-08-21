@@ -3,32 +3,20 @@ import createMirror, { createMirrorCode } from '../src/index'
 
 import { TypeCompiler } from '@sinclair/typebox/compiler'
 
-const shape = t.Recursive((This) =>
-	t.Object({
-		type: t.String(),
-		data: t.Union([t.Nullable(This), t.Array(This)])
-	})
-)
+const shape = t.Object({
+	'character.name': t.String()
+})
 
 const value = {
-	type: 'yea',
-	data: {
-		type: 'ok',
-		data: [
-			{
-				type: 'cool',
-				data: null
-			}
-		]
-	}
+	'character.name': 'SaltyAom'
 } satisfies typeof shape.static
 
-const mirror = createMirror(shape, {
+const mirror = createMirrorCode(shape, {
 	TypeCompiler,
 	sanitize: (a) => a
 })
 
-// console.log(mirror.toString())
+console.log(mirror)
 
 // console.dir(mirror(value), {
 // 	depth: null
