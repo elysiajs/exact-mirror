@@ -1,9 +1,6 @@
-# 0.2.2 - 5 Sep 2025
+# 0.2.1 - 5 Sep 2025
 Bug fix:
 - revert `createMirrorCode`
-
-# 0.2.1 - 22 Aug 2025
-Bug fix:
 - handle property name with dot
 
 # 0.2.0 - 21 Aug 2025
