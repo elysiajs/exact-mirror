@@ -1,5 +1,5 @@
 import { t } from 'elysia'
-import createMirror, { createMirrorCode } from '../src/index'
+import createMirror from '../src/index'
 
 import { TypeCompiler } from '@sinclair/typebox/compiler'
 
