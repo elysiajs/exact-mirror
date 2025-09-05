@@ -1,6 +1,5 @@
 import { TypeCompiler, type TypeCheck } from '@sinclair/typebox/compiler'
 import type { TAnySchema, TModule, TRecord } from '@sinclair/typebox'
-import { deepMatch } from 'bun'
 
 const Kind = Symbol.for('TypeBox.Kind')
 const Hint = Symbol.for('TypeBox.Hint')

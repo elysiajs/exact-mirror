@@ -4,20 +4,25 @@ import createMirror, { createMirrorCode } from '../src/index'
 import { TypeCompiler } from '@sinclair/typebox/compiler'
 
 const shape = t.Object({
-	'character.name': t.String()
+	total: t
+		.Transform(t.Number())
+		.Decode((x) => x)
+		.Encode((x) => x),
+	user: t.Object({
+		username: t.String()
+	}),
 })
 
 const value = {
-	'character.name': 'SaltyAom'
+	total: 1,
+	user: { username: 'Bob', secret: 'shhh' }
 } satisfies typeof shape.static
 
-const mirror = createMirrorCode(shape, {
+const mirror = createMirror(shape, {
 	TypeCompiler,
 	sanitize: (a) => a
 })
 
-console.log(mirror)
-
-// console.dir(mirror(value), {
-// 	depth: null
-// })
+console.dir(mirror(value), {
+	depth: null
+})
