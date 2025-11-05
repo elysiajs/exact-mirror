@@ -1,3 +1,7 @@
+# 0.2.3 - 5 Nov 2025
+Bug fix:
+- [#24](https://github.com/elysiajs/exact-mirror/pull/24) bracket handling in fields
+
 # 0.2.2 - 6 Sep 2025
 Bug fix:
 - revert `createMirrorCode`
