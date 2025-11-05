@@ -5,7 +5,7 @@ const Kind = Symbol.for('TypeBox.Kind')
 const Hint = Symbol.for('TypeBox.Hint')
 
 const isSpecialProperty = (name: string) =>
-	/(\ |-|\t|\n|\.)/.test(name) || !isNaN(+name[0])
+	/(\ |-|\t|\n|\.|\[|\])/.test(name) || !isNaN(+name[0])
 
 const joinProperty = (v1: string, v2: string | number, isOptional = false) => {
 	if (typeof v2 === 'number') return `${v1}[${v2}]`
@@ -122,7 +122,7 @@ const handleRecord = (
 	const optionals = instruction.optionalsInArray[i + 1]
 	if (optionals)
 		for (let oi = 0; oi < optionals.length; oi++) {
-			const target = `ar${i}v[ar${i}s[i]].${optionals[oi]}`
+			const target = `ar${i}v[ar${i}s[i]]${optionals[oi]}`
 
 			v += `;if(${target}===undefined)delete ${target}`
 		}
@@ -358,7 +358,26 @@ const mirror = (
 					const index = instruction.array
 
 					if (property.startsWith('ar')) {
-						const refName = name.slice(name.indexOf('.') + 1)
+						const dotIndex = name.indexOf('.')
+						let refName
+						if (dotIndex >= 0) {
+							// Has a dot, extract from the dot onwards
+							refName = name.slice(dotIndex)
+						} else {
+							// No dot, must be bracket notation
+							refName = name.slice(property.length)
+						}
+						// Normalize optional chaining for deletion code
+						// ?.field -> .field, ?.["field"] -> ["field"]
+						if (refName.startsWith('?.')) {
+							if (refName.charAt(2) === '[') {
+								// Bracket notation: ?.["x"] -> ["x"]
+								refName = refName.slice(2)
+							} else {
+								// Dot notation: ?.x -> .x
+								refName = refName.slice(1)
+							}
+						}
 						const array = instruction.optionalsInArray
 
 						if (array[index]) array[index].push(refName)
@@ -442,7 +461,7 @@ const mirror = (
 					// since pointer is checked in object case with ternary as undefined, this is not need
 					// const pointer = `ar${i}p.${optionals[oi]}`
 
-					const target = `ar${i}v[i].${optionals[oi]}`
+					const target = `ar${i}v[i]${optionals[oi]}`
 
 					// we can add semi-colon here because it delimit recursive mirror
 					v += `;if(${target}===undefined)delete ${target}`

@@ -306,4 +306,29 @@ describe('Core', () => {
 
 		isEqual(shape, value, expected)
 	})
+
+	it('handle bracket notation in property names', () => {
+		const shape = t.Object({
+			'order[createdAt]': t.Optional(
+				t.Union([t.Literal('asc'), t.Literal('desc')])
+			),
+			'orderBy[createdAt]': t.Optional(
+				t.Union([t.Literal('asc'), t.Literal('desc')])
+			)
+		})
+
+		const value = {
+			'order[createdAt]': 'asc',
+			'orderBy[createdAt]': 'desc',
+			// @ts-expect-error
+			additional: 'b'
+		} satisfies typeof shape.static
+
+		const expected = {
+			'order[createdAt]': 'asc',
+			'orderBy[createdAt]': 'desc'
+		} satisfies typeof shape.static
+
+		isEqual(shape, value, expected)
+	})
 })
