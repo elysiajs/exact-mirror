@@ -214,4 +214,35 @@ describe('Union', () => {
 			value
 		)
 	})
+
+	it('handle clean then check', () => {
+		const SchemaA = t.Object(
+			{ foo: t.Number() },
+			{
+				additionalProperties: false
+			}
+		)
+		const SchemaB = t.Object(
+			{ foo: t.Number(), baz: t.Boolean() },
+			{
+				additionalProperties: false
+			}
+		)
+		const UnionSchema = t.Union([SchemaA, SchemaB])
+		const OmittedUnionSchema = t.Omit(UnionSchema, ['baz'])
+
+		const shape = OmittedUnionSchema
+
+		const value = { foo: 1 } satisfies typeof shape.static
+
+		isEqual(
+			shape,
+			{
+				// @ts-ignore
+				baz: true,
+				foo: 1
+			},
+			value
+		)
+	})
 })

@@ -254,6 +254,10 @@ const handleUnion = (
 		return type
 	}
 
+	// some type require cleaning before checking
+	// e.g. object with `additionalProperties: false`
+	let cleanThenCheck = ''
+
 	for (let i = 0; i < schemas.length; i++) {
 		let type = unwrapRef(schemas[i])
 
@@ -277,16 +281,26 @@ const handleUnion = (
 				parentIsOptional: true
 			}
 		)}}\n`
+
+		cleanThenCheck +=
+			(i ? '' : 'let ') +
+			'tmp=' +
+			mirror(type, property, {
+				...instruction,
+				recursion: instruction.recursion + 1,
+				parentIsOptional: true
+			}) +
+			`\nif(d.unions[${ui}][${i}].Check(tmp))return tmp\n`
 	}
+
+	if (cleanThenCheck) v += cleanThenCheck
 
 	// unknown type, return as-is (this is a default intended behavior)
 	// because it's expected that exact-mirror input should always be a correct value
 	// returning an incorrect value then later checked is expected
-	v +=
-		`return ${instruction.removeUnknownUnionType ? 'undefined' : property}` +
-		`})()`
+	v += `return ${instruction.removeUnknownUnionType ? 'undefined' : property}`
 
-	return v
+	return v + `})()`
 }
 
 const mirror = (

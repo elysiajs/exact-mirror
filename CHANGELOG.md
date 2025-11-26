@@ -1,3 +1,7 @@
+# 0.2.4 - 26 Nov 2025
+Improvement:
+- handle strict union check
+
 # 0.2.3 - 5 Nov 2025
 Bug fix:
 - [#24](https://github.com/elysiajs/exact-mirror/pull/24) bracket handling in fields
