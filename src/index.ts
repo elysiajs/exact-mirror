@@ -428,7 +428,8 @@ const mirror = (
 				if (Array.isArray(schema.items)) {
 					v = handleTuple(schema.items, property, instruction)
 					break
-				} else if (isRoot) return 'return v'
+				} else if (isRoot && !Array.isArray(schema.items.anyOf))
+					return 'return v'
 				else if (
 					Kind in schema.items &&
 					schema.items.$ref &&
@@ -444,7 +445,7 @@ const mirror = (
 							recursion: instruction.recursion + 1
 						}
 					)
-				else {
+				else if (!Array.isArray(schema.items.anyOf)) {
 					v = property
 					break
 				}

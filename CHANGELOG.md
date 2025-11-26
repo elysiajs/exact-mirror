@@ -1,3 +1,7 @@
+# 0.2.5 - 26 Nov 2025
+Improvement:
+- handle strict union check in array
+
 # 0.2.4 - 26 Nov 2025
 Improvement:
 - handle strict union check

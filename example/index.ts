@@ -3,24 +3,22 @@ import createMirror from '../src/index'
 
 import { TypeCompiler } from '@sinclair/typebox/compiler'
 
-const SchemaA = t.Object(
-	{ foo: t.Number() },
-	{
-		additionalProperties: false
-	}
-)
-const SchemaB = t.Object(
-	{ foo: t.Number(), baz: t.Boolean() },
-	{
-		additionalProperties: false
-	}
-)
-const UnionSchema = t.Union([SchemaA, SchemaB])
+const SharedSchemaA = t.Object({ qux: t.Literal('a') })
+const SharedSchemaB = t.Object({ qux: t.Literal('b') })
+const SchemaA = t.Object({ foo: t.Number() })
+const SchemaB = t.Object({ foo: t.Number(), baz: t.Boolean() })
+
+const IntersectSchemaA = t.Intersect([SchemaA, SharedSchemaA])
+const IntersectSchemaB = t.Intersect([SchemaB, SharedSchemaB])
+
+const UnionSchema = t.Union([IntersectSchemaA, IntersectSchemaB])
 const OmittedUnionSchema = t.Omit(UnionSchema, ['baz'])
 
-const shape = OmittedUnionSchema
+const shape = t.Array(OmittedUnionSchema)
 
-const value = { baz: true, foo: 1 } satisfies typeof shape.static
+const value = [
+	{ bar: 'asd', baz: true, qux: 'b', foo: 1 }
+] satisfies typeof shape.static
 
 const mirror = createMirror(shape, {
 	TypeCompiler

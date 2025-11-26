@@ -245,4 +245,24 @@ describe('Union', () => {
 			value
 		)
 	})
+
+	it('handle clean then check in union', () => {
+		const SharedSchemaA = t.Object({ qux: t.Literal('a') })
+		const SharedSchemaB = t.Object({ qux: t.Literal('b') })
+		const SchemaA = t.Object({ foo: t.Number() })
+		const SchemaB = t.Object({ foo: t.Number(), baz: t.Boolean() })
+
+		const IntersectSchemaA = t.Intersect([SchemaA, SharedSchemaA])
+		const IntersectSchemaB = t.Intersect([SchemaB, SharedSchemaB])
+
+		const UnionSchema = t.Union([IntersectSchemaA, IntersectSchemaB])
+		const OmittedUnionSchema = t.Omit(UnionSchema, ['baz'])
+
+		const shape = t.Array(OmittedUnionSchema)
+
+		const value = [{ qux: 'b', foo: 1 }] satisfies typeof shape.static
+
+		// @ts-ignore
+		isEqual(shape, [{ bar: 'asd', baz: true, qux: 'b', foo: 1 }], value)
+	})
 })
