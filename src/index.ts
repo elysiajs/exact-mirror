@@ -120,12 +120,15 @@ const handleRecord = (
 		`ar${i}v[ar${i}s[i]]=${mirror(child, `ar${i}p`, instruction)}`
 
 	const optionals = instruction.optionalsInArray[i + 1]
-	if (optionals)
+	if (optionals) {
 		for (let oi = 0; oi < optionals.length; oi++) {
 			const target = `ar${i}v[ar${i}s[i]]${optionals[oi]}`
 
 			v += `;if(${target}===undefined)delete ${target}`
 		}
+		// Clear the optionals array after use to prevent pollution across sibling arrays
+		instruction.optionalsInArray[i + 1] = []
+	}
 
 	v += `}` + `return ar${i}v` + `})()`
 
@@ -394,8 +397,11 @@ const mirror = (
 						}
 						const array = instruction.optionalsInArray
 
-						if (array[index]) array[index].push(refName)
-						else array[index] = [refName]
+						if (array[index]) {
+							array[index].push(refName)
+						} else {
+							array[index] = [refName]
+						}
 					} else {
 						instruction.optionals.push(name)
 					}
@@ -481,6 +487,8 @@ const mirror = (
 					// we can add semi-colon here because it delimit recursive mirror
 					v += `;if(${target}===undefined)delete ${target}`
 				}
+				// Clear the optionals array after use to prevent pollution across sibling arrays
+				instruction.optionalsInArray[i + 1] = []
 			}
 
 			v += `}`
