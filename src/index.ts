@@ -65,7 +65,10 @@ export interface Instruction {
 	optionals: string[]
 	optionalsInArray: string[][]
 	parentIsOptional: boolean
-	array: number
+	/** Which array context we're currently inside (for storing optionals) */
+	currentArrayIndex: number
+	/** Mutable counter for allocating unique array indices to prevent sibling collisions */
+	nextArrayIndex: { value: number }
 	unions: TypeCheck<any>[][]
 	unionKeys: Record<string, 1>
 	sanitize: MaybeArray<(v: string) => string> | undefined
@@ -108,8 +111,8 @@ const handleRecord = (
 
 	if (!child) return property
 
-	const i = instruction.array
-	instruction.array++
+	const i = instruction.nextArrayIndex.value
+	instruction.nextArrayIndex.value++
 
 	let v =
 		`(()=>{` +
@@ -117,7 +120,7 @@ const handleRecord = (
 		`ar${i}v={};` +
 		`for(let i=0;i<ar${i}s.length;i++){` +
 		`const ar${i}p=${property}[ar${i}s[i]];` +
-		`ar${i}v[ar${i}s[i]]=${mirror(child, `ar${i}p`, instruction)}`
+		`ar${i}v[ar${i}s[i]]=${mirror(child, `ar${i}p`, { ...instruction, currentArrayIndex: i })}`
 
 	const optionals = instruction.optionalsInArray[i + 1]
 	if (optionals)
@@ -137,8 +140,8 @@ const handleTuple = (
 	property: string,
 	instruction: Instruction
 ) => {
-	const i = instruction.array
-	instruction.array++
+	const i = instruction.nextArrayIndex.value
+	instruction.nextArrayIndex.value++
 
 	const isRoot = property === 'v' && !instruction.unions.length
 
@@ -147,13 +150,13 @@ const handleTuple = (
 
 	v += `const ar${i}v=[`
 
-	for (let i = 0; i < schema.length; i++) {
-		if (i !== 0) v += ','
+	for (let idx = 0; idx < schema.length; idx++) {
+		if (idx !== 0) v += ','
 
 		v += mirror(
-			schema[i],
-			joinProperty(property, i, instruction.parentIsOptional),
-			instruction
+			schema[idx],
+			joinProperty(property, idx, instruction.parentIsOptional),
+			{ ...instruction, currentArrayIndex: i }
 		)
 	}
 
@@ -369,7 +372,8 @@ const mirror = (
 				)
 
 				if (isOptional) {
-					const index = instruction.array
+					// +1 because cleanup code uses optionalsInArray[i + 1] where i is captured BEFORE increment
+					const index = instruction.currentArrayIndex + 1
 
 					if (property.startsWith('ar')) {
 						const dotIndex = name.indexOf('.')
@@ -451,8 +455,8 @@ const mirror = (
 				}
 			}
 
-			const i = instruction.array
-			instruction.array++
+			const i = instruction.nextArrayIndex.value
+			instruction.nextArrayIndex.value++
 
 			let reference = property
 
@@ -467,7 +471,7 @@ const mirror = (
 			v +=
 				`for(let i=0;i<${reference}.length;i++){` +
 				`const ar${i}p=${reference}[i];` +
-				`ar${i}v[i]=${mirror(schema.items, `ar${i}p`, instruction)}`
+				`ar${i}v[i]=${mirror(schema.items, `ar${i}p`, { ...instruction, currentArrayIndex: i })}`
 
 			const optionals = instruction.optionalsInArray[i + 1]
 			if (optionals) {
@@ -562,7 +566,8 @@ export const createMirror = <T extends TAnySchema>(
 	const f = mirror(schema, 'v', {
 		optionals: [],
 		optionalsInArray: [],
-		array: 0,
+		currentArrayIndex: 0,
+		nextArrayIndex: { value: 0 },
 		parentIsOptional: false,
 		unions,
 		unionKeys: {},
