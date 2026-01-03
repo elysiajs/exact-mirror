@@ -3,28 +3,43 @@ import createMirror from '../src/index'
 
 import { TypeCompiler } from '@sinclair/typebox/compiler'
 
-const SharedSchemaA = t.Object({ qux: t.Literal('a') })
-const SharedSchemaB = t.Object({ qux: t.Literal('b') })
-const SchemaA = t.Object({ foo: t.Number() })
-const SchemaB = t.Object({ foo: t.Number(), baz: t.Boolean() })
+const shape = t.Object({
+	users: t.Array(
+		t.Object({
+			name: t.String(),
+			avatar: t.Nullable(t.Object({ url: t.String() }))
+		})
+	),
+	meta: t.Object({
+		pagination: t.Array(t.Object({ page: t.Integer() }))
+	})
+})
 
-const IntersectSchemaA = t.Intersect([SchemaA, SharedSchemaA])
-const IntersectSchemaB = t.Intersect([SchemaB, SharedSchemaB])
-
-const UnionSchema = t.Union([IntersectSchemaA, IntersectSchemaB])
-const OmittedUnionSchema = t.Omit(UnionSchema, ['baz'])
-
-const shape = t.Array(OmittedUnionSchema)
-
-const value = [
-	{ bar: 'asd', baz: true, qux: 'b', foo: 1 }
-] satisfies typeof shape.static
+const value = {
+	users: [
+		{
+			name: 'a',
+			avatar: { url: 'http://example.com/avatar.png' }
+		},
+		{
+			name: 'b',
+			avatar: null
+		}
+	],
+	meta: {
+		pagination: [
+			{
+				page: 1
+			}
+		]
+	}
+} satisfies typeof shape.static
 
 const mirror = createMirror(shape, {
 	TypeCompiler
 })
 
-console.log(mirror.toString())
+// console.log(mirror.toString())
 
 console.dir(mirror(value), {
 	depth: null
