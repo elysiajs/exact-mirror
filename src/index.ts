@@ -69,6 +69,7 @@ export interface Instruction {
 	unions: TypeCheck<any>[][]
 	unionKeys: Record<string, 1>
 	sanitize: MaybeArray<(v: string) => string> | undefined
+	fromUnion?: boolean
 	/**
 	 * TypeCompiler is required when using Union
 	 *
@@ -155,7 +156,11 @@ const handleTuple = (
 
 		v += mirror(
 			schema[i],
-			joinProperty(property, i, instruction.parentIsOptional),
+			joinProperty(
+				property,
+				i,
+				instruction.parentIsOptional || instruction.fromUnion
+			),
 			instruction
 		)
 	}
@@ -281,7 +286,8 @@ const handleUnion = (
 			{
 				...instruction,
 				recursion: instruction.recursion + 1,
-				parentIsOptional: true
+				parentIsOptional: true,
+				fromUnion: true
 			}
 		)}}\n`
 
@@ -291,7 +297,8 @@ const handleUnion = (
 			mirror(type, property, {
 				...instruction,
 				recursion: instruction.recursion + 1,
-				parentIsOptional: true
+				parentIsOptional: true,
+				fromUnion: true
 			}) +
 			`\nif(d.unions[${ui}][${i}].Check(tmp))return tmp\n`
 	}
@@ -368,7 +375,8 @@ const mirror = (
 				const name = joinProperty(
 					property,
 					key,
-					instruction.parentIsOptional
+					// If parent is a union, any property could be undefined
+					instruction.parentIsOptional || instruction.fromUnion
 				)
 
 				if (isOptional) {

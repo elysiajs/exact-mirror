@@ -265,4 +265,25 @@ describe('Union', () => {
 		// @ts-ignore
 		isEqual(shape, [{ bar: 'asd', baz: true, qux: 'b', foo: 1 }], value)
 	})
+
+	it('handle distinct union', () => {
+		const shape = t.Union([
+			t.Object({
+				status: t.Literal('a'),
+				a: t.Object({ b: t.Integer() })
+			}),
+			t.Object({ status: t.Literal('healthy') })
+		])
+
+		isEqual(shape, {
+			status: 'healthy'
+		})
+
+		isEqual(shape, {
+			status: 'a',
+			a: {
+				b: 1
+			}
+		})
+	})
 })

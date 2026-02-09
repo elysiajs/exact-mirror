@@ -1,3 +1,6 @@
+# 0.2.7 - 9 Feb 2025
+- [elysia#1700](https://github.com/elysiajs/elysia/issues/1700) distinct union object
+
 # 0.2.6 - 3 Jan 2025
 Bug fix:
 - [elysia#1631](https://github.com/elysiajs/elysia/issues/1631), [#26](https://github.com/elysiajs/exact-mirror/pull/26) prevent sibling arrays from sharing optionalsInArray index
