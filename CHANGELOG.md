@@ -1,4 +1,5 @@
 # 0.2.7 - 9 Feb 2025
+Bug fix:
 - [elysia#1700](https://github.com/elysiajs/elysia/issues/1700) distinct union object
 
 # 0.2.6 - 3 Jan 2025
