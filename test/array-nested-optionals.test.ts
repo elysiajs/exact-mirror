@@ -1,7 +1,31 @@
 import { expect, test, describe } from 'bun:test'
-import { Type } from '@sinclair/typebox'
-import { TypeCompiler } from '@sinclair/typebox/compiler'
+import { Type } from 'typebox'
+import { Compile } from 'typebox/compile'
 import { createMirror } from '../src/index'
+
+const TDate = () =>
+	Type.Encode(
+		Type.Union([
+			Type.Refine(
+				Type.Unsafe<Date>({ '~kind': 'Date' }),
+				(value) => value instanceof Date,
+				'must be Date'
+			),
+			Type.Decode(
+				Type.Union([
+					Type.String({
+						format: 'date',
+						default: new Date(0).toISOString()
+					}),
+					Type.String({
+						format: new Date(0).toISOString()
+					})
+				]),
+				(value) => new Date(value)
+			)
+		]),
+		(value) => (value instanceof Date ? value.toISOString() : value) as any
+	)
 
 describe('Nested Array with Optional Properties', () => {
 	test('should preserve array items when cleaning nested arrays', () => {
@@ -26,16 +50,12 @@ describe('Nested Array with Optional Properties', () => {
 					id: Type.String(),
 					pours: Type.Union([Type.Null(), Type.Array(PourSchema)]),
 					tags: Type.Array(Type.Object({ name: Type.String() })),
-					createdAt: Type.Transform(
-						Type.Union([Type.Date(), Type.String()])
-					)
-						.Decode((v) => (v instanceof Date ? v : new Date(v)))
-						.Encode((v) => v.toISOString())
+					createdAt: TDate()
 				})
 			)
 		})
 
-		const clean = createMirror(ResponseSchema, { TypeCompiler })
+		const clean = createMirror(ResponseSchema, { Compile })
 
 		const input = {
 			data: [
@@ -76,7 +96,7 @@ describe('Nested Array with Optional Properties', () => {
 			)
 		})
 
-		const clean = createMirror(Schema, { TypeCompiler })
+		const clean = createMirror(Schema, { Compile })
 
 		const input = {
 			outer: [

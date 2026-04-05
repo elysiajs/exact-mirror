@@ -1,11 +1,12 @@
-import { t } from 'elysia'
-
 import createMirror from '../src'
 
-import { TypeCompiler } from '@sinclair/typebox/compiler'
+import { Static, Type as t } from 'typebox'
+import { Compile } from 'typebox/compile'
 
 import { describe, it, expect } from 'bun:test'
 import { isEqual } from './utils'
+
+const Nullable = <T extends t.TSchema>(schema: T) => t.Union([schema, t.Null()])
 
 describe('Ref', () => {
 	it('handle module', () => {
@@ -16,11 +17,11 @@ describe('Ref', () => {
 			})
 		})
 
-		const shape = modules.Import('object')
+		const shape = modules.object
 
 		const value = {
 			name: 'salt'
-		} satisfies typeof shape.static
+		} satisfies Static<typeof shape>
 
 		isEqual(shape, value)
 	})
@@ -37,7 +38,7 @@ describe('Ref', () => {
 			})
 		})
 
-		const shape = modules.Import('object')
+		const shape = modules.object
 
 		const value = {
 			name: 'salt',
@@ -45,7 +46,7 @@ describe('Ref', () => {
 				id: 123,
 				name: 'salt'
 			}
-		} satisfies typeof shape.static
+		} satisfies Static<typeof shape>
 
 		isEqual(shape, value)
 	})
@@ -62,11 +63,11 @@ describe('Ref', () => {
 			})
 		})
 
-		const shape = modules.Import('object')
+		const shape = modules.object
 
 		const value = {
 			name: 'salt'
-		} satisfies typeof shape.static
+		} satisfies Static<typeof shape>
 
 		isEqual(shape, {
 			name: 'salt'
@@ -93,7 +94,7 @@ describe('Ref', () => {
 
 		const value = {
 			name: 'salt'
-		} satisfies typeof shape.static
+		} satisfies Static<typeof shape>
 
 		expect(
 			createMirror(shape, {
@@ -104,10 +105,10 @@ describe('Ref', () => {
 
 	it('handle recursion', () => {
 		const shape = t.Module({
-			a: t.Object({ type: t.String(), a: t.Nullable(t.Ref('a')) })
+			a: t.Object({ type: t.String(), a: Nullable(t.Ref('a')) })
 		})
 
-		const actual = shape.Import('a')
+		const actual = shape.a
 
 		const value = {
 			type: 'a',
@@ -122,7 +123,7 @@ describe('Ref', () => {
 
 		expect(
 			createMirror(actual, {
-				TypeCompiler,
+				Compile,
 				modules: shape
 			})(value)
 		).toEqual(value)
@@ -133,7 +134,7 @@ describe('Ref', () => {
 			a: t.Object({ type: t.String(), a: t.Array(t.Ref('a')) })
 		})
 
-		const actual = shape.Import('a')
+		const actual = shape.a
 
 		const value = {
 			type: 'a',
@@ -141,11 +142,11 @@ describe('Ref', () => {
 				{ type: 'a', a: [{ type: 'a', a: [] }] },
 				{ type: 'a', a: [{ type: 'a', a: [] }] }
 			]
-		} satisfies typeof actual.static
+		} satisfies Static<typeof actual>
 
 		expect(
 			createMirror(actual, {
-				TypeCompiler,
+				Compile,
 				modules: shape
 			})(value)
 		).toEqual(value)
@@ -155,11 +156,11 @@ describe('Ref', () => {
 		const shape = t.Module({
 			a: t.Object({
 				type: t.String(),
-				data: t.Union([t.Nullable(t.Ref('a')), t.Array(t.Ref('a'))])
+				data: t.Union([Nullable(t.Ref('a')), t.Array(t.Ref('a'))])
 			})
 		})
 
-		const actual = shape.Import('a')
+		const actual = shape.a
 
 		const value = {
 			type: 'yea',
@@ -172,11 +173,11 @@ describe('Ref', () => {
 					}
 				]
 			}
-		} satisfies typeof actual.static
+		} satisfies Static<typeof actual>
 
 		expect(
 			createMirror(actual, {
-				TypeCompiler,
+				Compile,
 				modules: shape
 			})(value)
 		).toEqual(value)

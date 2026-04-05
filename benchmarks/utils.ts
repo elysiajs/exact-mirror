@@ -2,18 +2,17 @@ import { bench, run, barplot, summary, compact } from 'mitata'
 
 import { createMirror } from '../src'
 
-import { Value } from '@sinclair/typebox/value'
-import { TypeCompiler } from '@sinclair/typebox/compiler'
+import { Value } from 'typebox/value'
+import { Compile } from 'typebox/compile'
+import type { Static, TSchema } from 'typebox/type'
 
-import type { TAnySchema } from '@sinclair/typebox'
-
-export const benchmark = <T extends TAnySchema>(
+export const benchmark = <T extends TSchema>(
 	model: T,
-	value: T['static'],
+	value: Static<T>,
 	options?: Parameters<typeof createMirror>[1]
 ) => {
 	const mirror = createMirror(model, {
-		TypeCompiler
+		Compile
 	})
 
 	if (process.env.DEBUG) {
@@ -38,16 +37,14 @@ export const benchmark = <T extends TAnySchema>(
 				})
 
 				bench('Exact Mirror', () => {
-					try {
-						return mirror(value)
-					} catch {}
+					return mirror(value)
 				})
 
-				// const validator = TypeCompiler.Compile(model)
+				const comp = Compile(model)
 
-				// bench('Mirror w/ validation', () => {
-				// 	return validator.Check(mirror(value))
-				// })
+				bench('TypeBox Compile.Clean', () => {
+					return comp.Clean(value)
+				})
 			})
 		})
 	})

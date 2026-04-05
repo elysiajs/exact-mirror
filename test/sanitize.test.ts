@@ -1,5 +1,5 @@
-import { t } from 'elysia'
-import { TypeCompiler } from '@sinclair/typebox/compiler'
+import { Static, Type as t } from 'typebox'
+import { Compile } from 'typebox/compile'
 
 import { describe, expect, it } from 'bun:test'
 import createMirror from '../src'
@@ -14,7 +14,7 @@ describe('sanitize', () => {
 		const value = {
 			hello: 'Hello',
 			world: 'World'
-		} satisfies typeof shape.static
+		} satisfies Static<typeof shape>
 
 		expect(
 			createMirror(shape, {
@@ -35,7 +35,7 @@ describe('sanitize', () => {
 		const value = {
 			hello: 'Hello',
 			world: 'World'
-		} satisfies typeof shape.static
+		} satisfies Static<typeof shape>
 
 		expect(
 			createMirror(shape, {
@@ -59,7 +59,7 @@ describe('sanitize', () => {
 		const value = {
 			hello: 'Hello',
 			world: 'World'
-		} satisfies typeof shape.static
+		} satisfies Static<typeof shape>
 
 		expect(
 			createMirror(shape, {
@@ -74,7 +74,7 @@ describe('sanitize', () => {
 	it('handle top-level string', () => {
 		const shape = t.String()
 
-		const value = 'Hello' satisfies typeof shape.static
+		const value = 'Hello' satisfies Static<typeof shape>
 
 		expect(
 			createMirror(shape, {
@@ -94,7 +94,7 @@ describe('sanitize', () => {
 		const value = {
 			hello: 'Hello',
 			detail: { world: 'World' }
-		} satisfies typeof shape.static
+		} satisfies Static<typeof shape>
 
 		expect(
 			createMirror(shape, {
@@ -129,13 +129,13 @@ describe('sanitize', () => {
 				(v) => (v === 'Hello' ? 'Hi' : v),
 				(v) => (v === 'World' ? 'Salty' : v)
 			],
-			TypeCompiler
+			Compile
 		})
 
 		const value1 = {
 			hello: 'Hello',
 			detail: { world: 'World' }
-		} satisfies typeof shape.static
+		} satisfies Static<typeof shape>
 
 		expect(mirror(value1)).toEqual({
 			hello: 'Hi',
@@ -147,7 +147,7 @@ describe('sanitize', () => {
 		const value2 = {
 			hello: 'Hello',
 			detail: { world2: 'World' }
-		} satisfies typeof shape.static
+		} satisfies Static<typeof shape>
 
 		expect(mirror(value2)).toEqual({
 			hello: 'Hi',

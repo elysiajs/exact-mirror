@@ -1,4 +1,4 @@
-import { t } from 'elysia'
+import { Type as t } from 'typebox'
 
 import { describe, it } from 'bun:test'
 import { isEqual } from './utils'

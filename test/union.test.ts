@@ -1,8 +1,10 @@
-import { t } from 'elysia'
+import { Static, Type as t } from 'typebox'
 
 import { describe, it } from 'bun:test'
 
 import { isEqual, notEqual } from './utils'
+
+const Nullable = <T extends t.TSchema>(schema: T) => t.Union([schema, t.Null()])
 
 describe('Union', () => {
 	it('handle union at root', () => {
@@ -193,7 +195,7 @@ describe('Union', () => {
 	it('return shape regardless of correctness', () => {
 		const shape = t.Object({
 			foo: t.Optional(
-				t.Nullable(
+				Nullable(
 					t.Object({
 						a: t.Number({
 							error: 'Must be a number'
@@ -206,7 +208,7 @@ describe('Union', () => {
 		const value = {
 			// @ts-expect-error
 			foo: 123
-		} satisfies typeof shape.static
+		} satisfies Static<typeof shape>
 
 		isEqual(
 			shape,
@@ -233,7 +235,7 @@ describe('Union', () => {
 
 		const shape = OmittedUnionSchema
 
-		const value = { foo: 1 } satisfies typeof shape.static
+		const value = { foo: 1 } satisfies Static<typeof shape>
 
 		isEqual(
 			shape,
@@ -260,7 +262,7 @@ describe('Union', () => {
 
 		const shape = t.Array(OmittedUnionSchema)
 
-		const value = [{ qux: 'b', foo: 1 }] satisfies typeof shape.static
+		const value = [{ qux: 'b', foo: 1 }] satisfies Static<typeof shape>
 
 		// @ts-ignore
 		isEqual(shape, [{ bar: 'asd', baz: true, qux: 'b', foo: 1 }], value)

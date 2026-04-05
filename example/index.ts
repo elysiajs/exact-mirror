@@ -15,9 +15,7 @@ const value = {
 	status: 'healthy'
 } satisfies typeof shape.static
 
-const mirror = createMirror(shape, {
-	TypeCompiler
-})
+const mirror = createMirror(shape)
 
 // console.log(mirror.toString())
 

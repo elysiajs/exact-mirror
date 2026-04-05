@@ -1,7 +1,9 @@
-import { t } from 'elysia'
+import { Type as t } from 'typebox'
 
 import { describe, it } from 'bun:test'
 import { isEqualToTypeBox } from './utils'
+
+const Nullable = <T extends t.TSchema>(schema: T) => t.Union([schema, t.Null()])
 
 describe('Sample', () => {
 	it('small', () => {
@@ -52,7 +54,7 @@ describe('Sample', () => {
 						alias: t.String()
 					}),
 					t.Object({
-						country: t.Nullable(t.String())
+						country: Nullable(t.String())
 					})
 				]),
 				social: t.Optional(
@@ -134,7 +136,7 @@ describe('Sample', () => {
 							alias: t.String()
 						}),
 						t.Object({
-							country: t.Nullable(t.String()),
+							country: Nullable(t.String()),
 							region: t.Optional(t.String())
 						})
 					]),

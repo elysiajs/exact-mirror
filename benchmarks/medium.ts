@@ -1,5 +1,7 @@
-import { t } from 'elysia'
+import { Type as t } from 'typebox'
 import { benchmark } from './utils'
+
+const Nullable = <T extends t.TSchema>(schema: T) => t.Union([schema, t.Null()])
 
 benchmark(
 	t.Object({
@@ -25,7 +27,7 @@ benchmark(
 				alias: t.String()
 			}),
 			t.Object({
-				country: t.Nullable(t.String())
+				country: Nullable(t.String())
 			})
 		]),
 		social: t.Optional(

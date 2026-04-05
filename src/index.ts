@@ -1,8 +1,57 @@
-import { TypeCompiler, type TypeCheck } from '@sinclair/typebox/compiler'
-import type { TAnySchema, TModule, TRecord } from '@sinclair/typebox'
+import type { TSchema, TModule, TRecord, Static } from 'typebox'
+import type { Compile, Validator } from 'typebox/compile'
 
-const Kind = Symbol.for('TypeBox.Kind')
-const Hint = Symbol.for('TypeBox.Hint')
+const Kind = '~kind'
+const Hint = '~hint'
+
+interface BaseSchema {
+	'~kind': string
+	id?: string
+	$id?: string
+	type?: string
+	$schema?: string
+	const?: unknown[]
+	// title?: string
+	// description?: string
+	// multipleOf?: number
+	// maximum?: number
+	// exclusiveMaximum?: boolean
+	// minimum?: number
+	// exclusiveMinimum?: boolean
+	// maxLength?: number
+	// minLength?: number
+	pattern?: string
+	additionalItems?: boolean | AnySchema
+	items?: AnySchema | AnySchema[]
+	// maxItems?: number
+	// minItems?: number
+	// uniqueItems?: boolean
+	// maxProperties?: number
+	// minProperties?: number
+	required?: string[]
+	additionalProperties?: boolean | AnySchema
+	definitions?: {
+		[name: string]: AnySchema
+	}
+	properties?: {
+		[name: string]: AnySchema
+	}
+	patternProperties?: {
+		[name: string]: AnySchema
+	}
+	dependencies?: {
+		[name: string]: AnySchema | string[]
+	}
+	enum?: any[]
+	allOf?: AnySchema[]
+	anyOf?: AnySchema[]
+	oneOf?: AnySchema[]
+	not?: AnySchema
+	$ref?: string
+	$defs?: Record<string, AnySchema>
+}
+
+type AnySchema = TSchema & BaseSchema
 
 const isSpecialProperty = (name: string) =>
 	/(\ |-|\t|\n|\.|\[|\]|\{|\})/.test(name) || !isNaN(+name[0])
@@ -17,7 +66,8 @@ const joinProperty = (v1: string, v2: string | number, isOptional = false) => {
 
 const encodeProperty = (v: string) => (isSpecialProperty(v) ? `"${v}"` : v)
 
-const sanitize = (key: string, sanitize = 0, schema: TAnySchema) => {
+const sanitize = (key: string, sanitize = 0, schema: AnySchema) => {
+	// @ts-expect-error
 	if (schema.type !== 'string' || schema.const || schema.trusted) return key
 
 	let hof = ''
@@ -25,7 +75,7 @@ const sanitize = (key: string, sanitize = 0, schema: TAnySchema) => {
 	return hof + key + ')'.repeat(sanitize)
 }
 
-export const mergeObjectIntersection = (schema: TAnySchema): TAnySchema => {
+export const mergeObjectIntersection = (schema: AnySchema): AnySchema => {
 	if (
 		!schema.allOf ||
 		(Kind in schema &&
@@ -36,7 +86,7 @@ export const mergeObjectIntersection = (schema: TAnySchema): TAnySchema => {
 	const { allOf, ...newSchema } = schema
 	newSchema.properties = {}
 
-	if (Kind in newSchema) newSchema[Kind as any] = 'Object'
+	if (Kind in newSchema) newSchema[Kind] = 'Object'
 
 	for (const type of allOf) {
 		if (type.type !== 'object') continue
@@ -66,7 +116,7 @@ export interface Instruction {
 	optionalsInArray: string[][]
 	parentIsOptional: boolean
 	array: number
-	unions: TypeCheck<any>[][]
+	unions: Validator<any>[][]
 	unionKeys: Record<string, 1>
 	sanitize: MaybeArray<(v: string) => string> | undefined
 	fromUnion?: boolean
@@ -78,10 +128,10 @@ export interface Instruction {
 	 *
 	 * @default undefined
 	 */
-	TypeCompiler?: typeof TypeCompiler
+	Compile?: typeof Compile
 	typeCompilerWanred?: boolean
-	modules?: TModule<any, any>
-	definitions: Record<string, TAnySchema>
+	modules?: TModule<{}>
+	definitions: Record<string, AnySchema>
 	recursion: number
 	/**
 	 * @default 8
@@ -118,7 +168,7 @@ const handleRecord = (
 		`ar${i}v={};` +
 		`for(let i=0;i<ar${i}s.length;i++){` +
 		`const ar${i}p=${property}[ar${i}s[i]];` +
-		`ar${i}v[ar${i}s[i]]=${mirror(child, `ar${i}p`, instruction)}`
+		`ar${i}v[ar${i}s[i]]=${mirror(child as AnySchema, `ar${i}p`, instruction)}`
 
 	const optionals = instruction.optionalsInArray[i + 1]
 	if (optionals) {
@@ -137,7 +187,7 @@ const handleRecord = (
 }
 
 const handleTuple = (
-	schema: TAnySchema[],
+	schema: AnySchema[],
 	property: string,
 	instruction: Instruction
 ) => {
@@ -210,7 +260,7 @@ export function deepClone<T>(source: T, weak = new WeakMap<object, any>()): T {
 }
 
 const handleUnion = (
-	schemas: TAnySchema[],
+	schemas: AnySchema[],
 	property: string,
 	instruction: Instruction
 ) => {
@@ -221,7 +271,7 @@ const handleUnion = (
 	// 	if (schema) return mirror(schema, property, instruction)
 	// }
 
-	if (instruction.TypeCompiler === undefined) {
+	if (instruction.Compile === undefined) {
 		if (!instruction.typeCompilerWanred) {
 			console.warn(
 				new Error(
@@ -237,26 +287,24 @@ const handleUnion = (
 	instruction.unionKeys[property] = 1
 
 	const ui = instruction.unions.length
-	const typeChecks = (instruction.unions[ui] = <TypeCheck<any>[]>[])
+	const typeChecks = (instruction.unions[ui] = <Validator<any>[]>[])
 
 	let v = `(()=>{\n`
 
-	const unwrapRef = (type: TAnySchema) => {
+	const unwrapRef = (type: AnySchema): AnySchema => {
 		if (!(Kind in type) || !type.$ref) return type
 
-		if (type[Kind] === 'This') {
+		if (type[Kind] === 'This')
 			return deepClone(instruction.definitions[type.$ref])
-		} else if (type[Kind] === 'Ref') {
+		else if (type[Kind] === 'Cyclic') {
 			if (!instruction.modules)
 				console.warn(
 					new Error(
 						'[exact-mirror] modules is required when using nested cyclic reference'
 					)
 				)
-			else
-				return instruction.modules.Import(
-					type.$ref
-				) as any as TAnySchema
+			// @ts-expect-error
+			else return instruction.modules.$defs[type.$ref] as any as AnySchema
 		}
 
 		return type
@@ -279,7 +327,7 @@ const handleUnion = (
 			else type.items = unwrapRef(type.items)
 		}
 
-		typeChecks.push(TypeCompiler.Compile(type))
+		typeChecks.push(instruction.Compile(type))
 		v += `if(d.unions[${ui}][${i}].Check(${property})){return ${mirror(
 			type,
 			property,
@@ -314,7 +362,7 @@ const handleUnion = (
 }
 
 const mirror = (
-	schema: TAnySchema,
+	schema: AnySchema,
 	property: string,
 	instruction: Instruction
 ): string => {
@@ -324,10 +372,10 @@ const mirror = (
 
 	if (
 		Kind in schema &&
-		schema[Kind] === 'Import' &&
-		schema.$ref in schema.$defs
+		schema[Kind] === '~Cyclic' &&
+		schema.$ref! in schema.$defs!
 	)
-		return mirror(schema.$defs[schema.$ref], property, {
+		return mirror(schema.$defs![schema.$ref!], property, {
 			...instruction,
 			definitions: Object.assign(instruction.definitions, schema.$defs)
 		})
@@ -349,7 +397,7 @@ const mirror = (
 
 	switch (schema.type) {
 		case 'object':
-			if (schema[Kind as any] === 'Record') {
+			if (schema[Kind] === 'Record') {
 				v = handleRecord(schema as TRecord, property, instruction)
 
 				break
@@ -361,7 +409,7 @@ const mirror = (
 
 			if (schema.additionalProperties) v += `...${property},`
 
-			const keys = Object.keys(schema.properties)
+			const keys = Object.keys(schema.properties!)
 			for (let i = 0; i < keys.length; i++) {
 				const key = keys[i]
 
@@ -370,7 +418,7 @@ const mirror = (
 					!schema.required ||
 					// field is explicitly required
 					(schema.required && !schema.required.includes(key)) ||
-					Array.isArray(schema.properties[key].anyOf)
+					Array.isArray(schema.properties![key].anyOf)
 
 				const name = joinProperty(
 					property,
@@ -415,7 +463,7 @@ const mirror = (
 					}
 				}
 
-				const child = schema.properties[key]
+				const child = schema.properties![key]
 
 				if (i !== 0) v += ','
 
@@ -436,16 +484,18 @@ const mirror = (
 
 		case 'array':
 			if (
+				// @ts-expect-error
 				schema.items.type !== 'object' &&
+				// @ts-expect-error
 				schema.items.type !== 'array'
 			) {
 				if (Array.isArray(schema.items)) {
 					v = handleTuple(schema.items, property, instruction)
 					break
-				} else if (isRoot && !Array.isArray(schema.items.anyOf))
+				} else if (isRoot && !Array.isArray(schema.items!.anyOf))
 					return 'return v'
 				else if (
-					Kind in schema.items &&
+					Kind in schema.items! &&
 					schema.items.$ref &&
 					(schema.items[Kind] === 'Ref' ||
 						schema.items[Kind] === 'This')
@@ -459,7 +509,7 @@ const mirror = (
 							recursion: instruction.recursion + 1
 						}
 					)
-				else if (!Array.isArray(schema.items.anyOf)) {
+				else if (!Array.isArray(schema.items!.anyOf)) {
 					v = property
 					break
 				}
@@ -481,7 +531,7 @@ const mirror = (
 			v +=
 				`for(let i=0;i<${reference}.length;i++){` +
 				`const ar${i}p=${reference}[i];` +
-				`ar${i}v[i]=${mirror(schema.items, `ar${i}p`, instruction)}`
+				`ar${i}v[i]=${mirror(schema.items as AnySchema, `ar${i}p`, instruction)}`
 
 			const optionals = instruction.optionalsInArray[i + 1]
 			if (optionals) {
@@ -550,10 +600,10 @@ const mirror = (
 	return `${v}return x`
 }
 
-export const createMirror = <T extends TAnySchema>(
+export const createMirror = <T extends TSchema>(
 	schema: T,
 	{
-		TypeCompiler,
+		Compile,
 		modules,
 		definitions,
 		sanitize,
@@ -562,7 +612,7 @@ export const createMirror = <T extends TAnySchema>(
 	}: Partial<
 		Pick<
 			Instruction,
-			| 'TypeCompiler'
+			| 'Compile'
 			| 'definitions'
 			| 'sanitize'
 			| 'modules'
@@ -570,19 +620,19 @@ export const createMirror = <T extends TAnySchema>(
 			| 'removeUnknownUnionType'
 		>
 	> = {}
-): ((v: T['static']) => T['static']) => {
+): ((v: Static<T>) => Static<T>) => {
 	const unions = <Instruction['unions']>[]
 
 	if (typeof sanitize === 'function') sanitize = [sanitize]
 
-	const f = mirror(schema, 'v', {
+	const f = mirror(schema as any, 'v', {
 		optionals: [],
 		optionalsInArray: [],
 		array: 0,
 		parentIsOptional: false,
 		unions,
 		unionKeys: {},
-		TypeCompiler,
+		Compile,
 		modules,
 		// @ts-ignore private property
 		definitions: definitions ?? modules?.$defs ?? {},
