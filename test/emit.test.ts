@@ -8,22 +8,23 @@ describe('External', () => {
 	it('handle undefined unions, hof', () => {
 		const shape = t.Array(t.String())
 
-		const { unions, hof } = createMirror(shape, {
+		const { source, externals } = createMirror(shape, {
 			emit: true
 		})
 
-		expect(unions).toHaveLength(0)
-		expect(hof).toBeUndefined()
+		expect(source).toBeString()
+		expect(externals).toBeUndefined()
 	})
 
 	it('handle unions', () => {
 		const shape = t.Union([t.String(), t.Number()])
 
-		const { unions, hof } = createMirror(shape, {
+		const { source, externals: { unions, hof } } = createMirror(shape, {
 			emit: true,
 			Compile
 		})
 
+		expect(source).toBeString()
 		expect(unions).toHaveLength(1)
 		expect(hof).toBeUndefined()
 	})
@@ -31,11 +32,12 @@ describe('External', () => {
 	it('handle hof', () => {
 		const shape = t.String()
 
-		const { unions, hof } = createMirror(shape, {
+		const { source, externals: { unions, hof } } = createMirror(shape, {
 			emit: true,
 			sanitize: (v) => v
 		})
 
+		expect(source).toBeString()
 		expect(unions).toHaveLength(0)
 		expect(hof).toBeDefined()
 	})
@@ -43,12 +45,13 @@ describe('External', () => {
 	it('handle unions and hof', () => {
 		const shape = t.Union([t.String(), t.Number()])
 
-		const { unions, hof } = createMirror(shape, {
+		const { source, externals: { unions, hof } } = createMirror(shape, {
 			emit: true,
 			sanitize: (v) => v,
 			Compile
 		})
 
+		expect(source).toBeString()
 		expect(unions).toHaveLength(1)
 		expect(hof).toBeDefined()
 	})

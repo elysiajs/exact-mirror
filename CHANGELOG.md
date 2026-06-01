@@ -1,3 +1,7 @@
+# 1.0.2 - 1 Jun 2026
+Bug fix:
+- export `source` in `emit` method
+
 # 1.0.1 - 1 Jun 2026
 Feature:
 - add `emit` method

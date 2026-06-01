@@ -602,8 +602,11 @@ const mirror = (
 }
 
 export interface Manifest {
-	unions: Validator<any, TSchema, unknown, unknown>[][]
-	hof?: Record<string, Function>
+	source: string
+	externals: {
+		unions: Validator<any, TSchema, unknown, unknown>[][]
+		hof?: Record<string, Function>
+	}
 }
 
 export const createMirror = <T extends TSchema, Emit extends boolean = false>(
@@ -651,7 +654,7 @@ export const createMirror = <T extends TSchema, Emit extends boolean = false>(
 	})
 
 	if (!unions.length && !sanitize?.length) {
-		if (emit) return { unions, hof: undefined } as any
+		if (emit) return { source: f, externals: undefined } as any
 
 		return Function('v', f) as any
 	}
@@ -662,15 +665,20 @@ export const createMirror = <T extends TSchema, Emit extends boolean = false>(
 		for (let i = 0; i < sanitize.length; i++) hof[`h${i}`] = sanitize[i]
 	}
 
+	const source = `return function mirror(v){${f}}`
+
 	if (emit)
 		return {
-			unions,
-			hof
+			source,
+			externals: {
+				unions,
+				hof
+			}
 		} as any
 
 	return Function(
 		'd',
-		`return function mirror(v){${f}}`
+		source
 	)(
 		hof
 			? unions
