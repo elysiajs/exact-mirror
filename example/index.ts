@@ -1,8 +1,6 @@
 import { t } from 'elysia'
 import createMirror from '../src/index'
 
-import { TypeCompiler } from '@sinclair/typebox/compiler'
-
 const shape = t.Union([
 	t.Object({
 		status: t.Literal('a'),

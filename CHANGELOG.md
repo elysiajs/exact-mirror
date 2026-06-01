@@ -1,3 +1,7 @@
+# 1.0.1 - 1 Jun 2026
+Feature:
+- add `emit` method
+
 # 1.0.0 - 6 Apr 2026
 Feature:
 - Update to TypeBox 1

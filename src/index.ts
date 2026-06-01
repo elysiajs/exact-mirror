@@ -111,7 +111,7 @@ export const mergeObjectIntersection = (schema: AnySchema): AnySchema => {
 
 type MaybeArray<T> = T | T[]
 
-export interface Instruction {
+export interface Instruction<Emit extends boolean = false> {
 	optionals: string[]
 	optionalsInArray: string[][]
 	parentIsOptional: boolean
@@ -120,6 +120,7 @@ export interface Instruction {
 	unionKeys: Record<string, 1>
 	sanitize: MaybeArray<(v: string) => string> | undefined
 	fromUnion?: boolean
+	emit?: Emit
 	/**
 	 * TypeCompiler is required when using Union
 	 *
@@ -600,7 +601,12 @@ const mirror = (
 	return `${v}return x`
 }
 
-export const createMirror = <T extends TSchema>(
+export interface Manifest {
+	unions: Validator<any, TSchema, unknown, unknown>[][]
+	hof?: Record<string, Function>
+}
+
+export const createMirror = <T extends TSchema, Emit extends boolean = false>(
 	schema: T,
 	{
 		Compile,
@@ -608,19 +614,21 @@ export const createMirror = <T extends TSchema>(
 		definitions,
 		sanitize,
 		recursionLimit = 8,
-		removeUnknownUnionType = false
+		removeUnknownUnionType = false,
+		emit
 	}: Partial<
 		Pick<
-			Instruction,
+			Instruction<Emit>,
 			| 'Compile'
 			| 'definitions'
 			| 'sanitize'
 			| 'modules'
 			| 'recursionLimit'
 			| 'removeUnknownUnionType'
+			| 'emit'
 		>
 	> = {}
-): ((v: Static<T>) => Static<T>) => {
+): Emit extends true ? Manifest : (v: Static<T>) => Static<T> => {
 	const unions = <Instruction['unions']>[]
 
 	if (typeof sanitize === 'function') sanitize = [sanitize]
@@ -642,7 +650,11 @@ export const createMirror = <T extends TSchema>(
 		removeUnknownUnionType
 	})
 
-	if (!unions.length && !sanitize?.length) return Function('v', f) as any
+	if (!unions.length && !sanitize?.length) {
+		if (emit) return { unions, hof: undefined } as any
+
+		return Function('v', f) as any
+	}
 
 	let hof: Record<string, Function> | undefined
 	if (sanitize?.length) {
@@ -650,13 +662,27 @@ export const createMirror = <T extends TSchema>(
 		for (let i = 0; i < sanitize.length; i++) hof[`h${i}`] = sanitize[i]
 	}
 
+	if (emit)
+		return {
+			unions,
+			hof
+		} as any
+
 	return Function(
 		'd',
 		`return function mirror(v){${f}}`
-	)({
-		unions,
-		...hof
-	}) as any
+	)(
+		hof
+			? unions
+				? {
+						unions,
+						...hof
+					}
+				: hof
+			: unions
+				? { unions }
+				: undefined
+	) as any
 }
 
 export default createMirror
