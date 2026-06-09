@@ -54,17 +54,18 @@ interface BaseSchema {
 type AnySchema = TSchema & BaseSchema
 
 const isSpecialProperty = (name: string) =>
-	/(\ |-|\t|\n|\.|\[|\]|\{|\})/.test(name) || !isNaN(+name[0])
+	!/^[A-Za-z_$][A-Za-z0-9_$]*$/.test(name)
 
 const joinProperty = (v1: string, v2: string | number, isOptional = false) => {
 	if (typeof v2 === 'number') return `${v1}[${v2}]`
 
-	if (isSpecialProperty(v2)) return `${v1}${isOptional ? '?.' : ''}["${v2}"]`
+	if (isSpecialProperty(v2))
+		return `${v1}${isOptional ? '?.' : ''}[${JSON.stringify(v2)}]`
 
 	return `${v1}${isOptional ? '?' : ''}.${v2}`
 }
 
-const encodeProperty = (v: string) => (isSpecialProperty(v) ? `"${v}"` : v)
+const encodeProperty = (v: string) => (isSpecialProperty(v) ? JSON.stringify(v) : v)
 
 const sanitize = (key: string, sanitize = 0, schema: AnySchema) => {
 	// @ts-expect-error

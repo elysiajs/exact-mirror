@@ -1,3 +1,7 @@
+# 1.1.1 - 10 Jun 2026
+Bug fix:
+- escape special characters in property names: quotes, backslashes, newlines, backticks etc. previously produced a `SyntaxError` (or could inject into the generated code); detection is now identifier-based and names are escaped with `JSON.stringify`
+
 # 1.1.0 - 10 Jun 2026
 Feature:
 - support cyclic schema (`~kind: 'Cyclic'`): each `$defs` definition compiles to its own mirror function and recursion happens between functions at runtime — unbounded depth, no `recursionLimit` truncation, no exponential ref inlining, `modules` option no longer required
