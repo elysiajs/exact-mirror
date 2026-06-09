@@ -108,9 +108,26 @@ describe('Ref', () => {
 			a: t.Object({ type: t.String(), a: Nullable(t.Ref('a')) })
 		})
 
-		const actual = shape.a
+		const mirror = createMirror(shape.a, {
+			Compile,
+			modules: shape
+		})
 
-		const value = {
+		expect(
+			mirror({
+				type: 'a',
+				extra: 'x',
+				a: {
+					type: 'a',
+					extra: 'x',
+					a: {
+						type: 'a',
+						extra: 'x',
+						a: null
+					}
+				}
+			} as any)
+		).toEqual({
 			type: 'a',
 			a: {
 				type: 'a',
@@ -119,40 +136,38 @@ describe('Ref', () => {
 					a: null
 				}
 			}
-		} satisfies typeof actual.static
-
-		expect(
-			createMirror(actual, {
-				Compile,
-				modules: shape
-			})(value)
-		).toEqual(value)
+		})
 	})
 
-	it('handle recusion array', () => {
+	it('handle recursion in array', () => {
 		const shape = t.Module({
 			a: t.Object({ type: t.String(), a: t.Array(t.Ref('a')) })
 		})
 
-		const actual = shape.a
+		const mirror = createMirror(shape.a, {
+			Compile,
+			modules: shape
+		})
 
-		const value = {
+		expect(
+			mirror({
+				type: 'a',
+				extra: 'x',
+				a: [
+					{ type: 'a', extra: 'x', a: [{ type: 'a', a: [] }] },
+					{ type: 'a', a: [{ type: 'a', extra: 'x', a: [] }] }
+				]
+			} as any)
+		).toEqual({
 			type: 'a',
 			a: [
 				{ type: 'a', a: [{ type: 'a', a: [] }] },
 				{ type: 'a', a: [{ type: 'a', a: [] }] }
 			]
-		} satisfies Static<typeof actual>
-
-		expect(
-			createMirror(actual, {
-				Compile,
-				modules: shape
-			})(value)
-		).toEqual(value)
+		})
 	})
 
-	it('handle Import', () => {
+	it('handle recursion in union without modules option', () => {
 		const shape = t.Module({
 			a: t.Object({
 				type: t.String(),
@@ -160,9 +175,25 @@ describe('Ref', () => {
 			})
 		})
 
-		const actual = shape.a
+		const mirror = createMirror(shape.a, { Compile })
 
-		const value = {
+		expect(
+			mirror({
+				type: 'yea',
+				extra: 'x',
+				data: {
+					type: 'ok',
+					extra: 'x',
+					data: [
+						{
+							type: 'cool',
+							extra: 'x',
+							data: null
+						}
+					]
+				}
+			} as any)
+		).toEqual({
 			type: 'yea',
 			data: {
 				type: 'ok',
@@ -173,13 +204,6 @@ describe('Ref', () => {
 					}
 				]
 			}
-		} satisfies Static<typeof actual>
-
-		expect(
-			createMirror(actual, {
-				Compile,
-				modules: shape
-			})(value)
-		).toEqual(value)
+		})
 	})
 })

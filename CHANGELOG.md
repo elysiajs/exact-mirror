@@ -1,3 +1,12 @@
+# 1.1.0 - 10 Jun 2026
+Feature:
+- support cyclic schema (`~kind: 'Cyclic'`): each `$defs` definition compiles to its own mirror function and recursion happens between functions at runtime — unbounded depth, no `recursionLimit` truncation, no exponential ref inlining, `modules` option no longer required
+
+Bug fix:
+- cyclic schema previously produced a silent identity mirror (no stripping, no sanitize)
+- handle array schema without `items` and object schema without `properties`, eg. elysia `t.ArrayString()` inside a union crashed codegen
+- degrade unsupported schema node to identity for that node instead of failing the whole mirror
+
 # 1.0.2 - 1 Jun 2026
 Bug fix:
 - export `source` in `emit` method

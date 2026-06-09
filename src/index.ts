@@ -133,6 +133,16 @@ export interface Instruction<Emit extends boolean = false> {
 	typeCompilerWanred?: boolean
 	modules?: TModule<{}>
 	definitions: Record<string, AnySchema>
+	/**
+	 * Shared cyclic codegen state: generated per-definition mirror
+	 * functions, grouped by `$defs` object identity
+	 */
+	cyclic: CyclicContext
+	/**
+	 * `$defs` group the current cyclic definition body is generated
+	 * against, used to resolve `Ref` nodes to function calls
+	 */
+	cyclicDefs?: CyclicGroup
 	recursion: number
 	/**
 	 * @default 8
@@ -195,7 +205,7 @@ const handleTuple = (
 	const i = instruction.array
 	instruction.array++
 
-	const isRoot = property === 'v' && !instruction.unions.length
+	const isRoot = property === 'v' && !instruction.fromUnion
 
 	let v = ''
 	if (!isRoot) v = `(()=>{`
@@ -260,6 +270,91 @@ export function deepClone<T>(source: T, weak = new WeakMap<object, any>()): T {
 	return source
 }
 
+interface CyclicGroup {
+	defs: Record<string, AnySchema>
+	names: Record<string, string>
+}
+
+interface CyclicContext {
+	groups: Map<object, CyclicGroup>
+	fns: string[]
+	count: number
+}
+
+const handleCyclic = (
+	schema: AnySchema,
+	property: string,
+	instruction: Instruction
+) => {
+	const defs = schema.$defs!
+	let group = instruction.cyclic.groups.get(defs)
+
+	if (!group) {
+		group = { defs, names: {} }
+		instruction.cyclic.groups.set(defs, group)
+
+		for (const name in defs)
+			group.names[name] = `cy${instruction.cyclic.count++}`
+
+		for (const name in defs)
+			instruction.cyclic.fns.push(
+				`function ${group.names[name]}(v){${mirror(defs[name], 'v', {
+					...instruction,
+					cyclicDefs: group,
+					fromUnion: false,
+					parentIsOptional: false,
+					optionals: [],
+					optionalsInArray: [],
+					unionKeys: {},
+					array: 0,
+					recursion: 0
+				})}}`
+			)
+	}
+
+	const fn = group.names[schema.$ref!]
+
+	if (!fn)
+		throw new Error(
+			`[exact-mirror] cyclic reference "${schema.$ref}" is not found in $defs`
+		)
+
+	// incorrect (nullish) value is passed as-is, like union's default behavior
+	return `(${property}==null?${property}:${fn}(${property}))`
+}
+
+// a type referencing cyclic definitions can only be checked with its
+// `$defs` context, rewrap it as a cyclic schema before compilation
+const withDefs = (type: AnySchema, group: CyclicGroup): AnySchema => {
+	if (Kind in type) {
+		// a cyclic schema carries its own $defs
+		if (type[Kind] === 'Cyclic') return type
+
+		if (type[Kind] === 'Ref' && type.$ref! in group.defs)
+			return Object.defineProperty(
+				{ $defs: group.defs, $ref: type.$ref },
+				Kind,
+				{ value: 'Cyclic' }
+			) as AnySchema
+	}
+
+	let entry = '~check'
+	while (entry in group.defs) entry += '~'
+
+	// TypeBox use non-enumerable properties
+	const def = Object.create(
+		Object.getPrototypeOf(type),
+		Object.getOwnPropertyDescriptors(type)
+	)
+	def.$id = entry
+
+	return Object.defineProperty(
+		{ $defs: { ...group.defs, [entry]: def }, $ref: entry },
+		Kind,
+		{ value: 'Cyclic' }
+	) as AnySchema
+}
+
 const handleUnion = (
 	schemas: AnySchema[],
 	property: string,
@@ -297,16 +392,6 @@ const handleUnion = (
 
 		if (type[Kind] === 'This')
 			return deepClone(instruction.definitions[type.$ref])
-		else if (type[Kind] === 'Cyclic') {
-			if (!instruction.modules)
-				console.warn(
-					new Error(
-						'[exact-mirror] modules is required when using nested cyclic reference'
-					)
-				)
-			// @ts-expect-error
-			else return instruction.modules.$defs[type.$ref] as any as AnySchema
-		}
 
 		return type
 	}
@@ -328,7 +413,13 @@ const handleUnion = (
 			else type.items = unwrapRef(type.items)
 		}
 
-		typeChecks.push(instruction.Compile(type))
+		typeChecks.push(
+			instruction.Compile(
+				instruction.cyclicDefs
+					? (withDefs(type, instruction.cyclicDefs) as any)
+					: type
+			)
+		)
 		v += `if(d.unions[${ui}][${i}].Check(${property})){return ${mirror(
 			type,
 			property,
@@ -369,17 +460,52 @@ const mirror = (
 ): string => {
 	if (!schema) return ''
 
-	const isRoot = property === 'v' && !instruction.unions.length
+	const isRoot = property === 'v' && !instruction.fromUnion
+	const optionalsLength = instruction.optionals.length
+
+	try {
+		if (Kind in schema && schema[Kind] === 'Cyclic') {
+			const call = handleCyclic(schema, property, instruction)
+
+			return isRoot ? `return ${call}` : call
+		}
+
+		return mirrorNode(schema, property, instruction)
+	} catch (error) {
+		// degrade only this subtree to identity instead of failing the whole mirror
+		instruction.optionals.length = optionalsLength
+
+		console.warn(
+			new Error(
+				'[exact-mirror] failed to generate mirror for a schema node, ' +
+					'the node is passed through as-is. ' +
+					'Please report this issue to https://github.com/elysiajs/exact-mirror/issues'
+			),
+			error
+		)
+
+		return isRoot ? 'return v' : property
+	}
+}
+
+const mirrorNode = (
+	schema: AnySchema,
+	property: string,
+	instruction: Instruction
+): string => {
+	const isRoot = property === 'v' && !instruction.fromUnion
 
 	if (
+		instruction.cyclicDefs &&
 		Kind in schema &&
-		schema[Kind] === '~Cyclic' &&
-		schema.$ref! in schema.$defs!
-	)
-		return mirror(schema.$defs![schema.$ref!], property, {
-			...instruction,
-			definitions: Object.assign(instruction.definitions, schema.$defs)
-		})
+		schema[Kind] === 'Ref' &&
+		schema.$ref &&
+		schema.$ref in instruction.cyclicDefs.names
+	) {
+		const call = `(${property}==null?${property}:${instruction.cyclicDefs.names[schema.$ref]}(${property}))`
+
+		return isRoot ? `return ${call}` : call
+	}
 
 	if (
 		isRoot &&
@@ -405,6 +531,12 @@ const mirror = (
 			}
 
 			schema = mergeObjectIntersection(schema)
+
+			// without properties there is nothing to strip, pass as-is
+			if (!schema.properties) {
+				v = property
+				break
+			}
 
 			v += '{'
 
@@ -484,35 +616,55 @@ const mirror = (
 			break
 
 		case 'array':
+			// without items constraint there is nothing to strip, pass as-is
+			if (!schema.items) {
+				v = property
+				break
+			}
+
 			if (
 				// @ts-expect-error
 				schema.items.type !== 'object' &&
 				// @ts-expect-error
 				schema.items.type !== 'array'
 			) {
+				const cyclicItems =
+					instruction.cyclicDefs !== undefined &&
+					!Array.isArray(schema.items) &&
+					Kind in schema.items! &&
+					schema.items[Kind] === 'Ref' &&
+					schema.items.$ref !== undefined &&
+					schema.items.$ref in instruction.cyclicDefs.names
+
 				if (Array.isArray(schema.items)) {
 					v = handleTuple(schema.items, property, instruction)
 					break
-				} else if (isRoot && !Array.isArray(schema.items!.anyOf))
-					return 'return v'
-				else if (
-					Kind in schema.items! &&
-					schema.items.$ref &&
-					(schema.items[Kind] === 'Ref' ||
-						schema.items[Kind] === 'This')
-				)
-					v = mirror(
-						deepClone(instruction.definitions[schema.items.$ref]),
-						property,
-						{
-							...instruction,
-							parentIsOptional: true,
-							recursion: instruction.recursion + 1
-						}
+				} else if (!cyclicItems) {
+					// cyclic ref items continue to the loop below,
+					// mirroring to a per-item function call
+					if (isRoot && !Array.isArray(schema.items!.anyOf))
+						return 'return v'
+					else if (
+						Kind in schema.items! &&
+						schema.items.$ref &&
+						(schema.items[Kind] === 'Ref' ||
+							schema.items[Kind] === 'This')
 					)
-				else if (!Array.isArray(schema.items!.anyOf)) {
-					v = property
-					break
+						v = mirror(
+							deepClone(
+								instruction.definitions[schema.items.$ref]
+							),
+							property,
+							{
+								...instruction,
+								parentIsOptional: true,
+								recursion: instruction.recursion + 1
+							}
+						)
+					else if (!Array.isArray(schema.items!.anyOf)) {
+						v = property
+						break
+					}
 				}
 			}
 
@@ -633,6 +785,7 @@ export const createMirror = <T extends TSchema, Emit extends boolean = false>(
 	> = {}
 ): Emit extends true ? Manifest : (v: Static<T>) => Static<T> => {
 	const unions = <Instruction['unions']>[]
+	const cyclic: CyclicContext = { groups: new Map(), fns: [], count: 0 }
 
 	if (typeof sanitize === 'function') sanitize = [sanitize]
 
@@ -647,16 +800,19 @@ export const createMirror = <T extends TSchema, Emit extends boolean = false>(
 		modules,
 		// @ts-ignore private property
 		definitions: definitions ?? modules?.$defs ?? {},
+		cyclic,
 		sanitize,
 		recursion: 0,
 		recursionLimit,
 		removeUnknownUnionType
 	})
 
-	if (!unions.length && !sanitize?.length) {
-		if (emit) return { source: f, externals: undefined } as any
+	const fns = cyclic.fns.length ? cyclic.fns.join('\n') + '\n' : ''
 
-		return Function('v', f) as any
+	if (!unions.length && !sanitize?.length) {
+		if (emit) return { source: fns + f, externals: undefined } as any
+
+		return Function('v', fns + f) as any
 	}
 
 	let hof: Record<string, Function> | undefined
@@ -665,7 +821,7 @@ export const createMirror = <T extends TSchema, Emit extends boolean = false>(
 		for (let i = 0; i < sanitize.length; i++) hof[`h${i}`] = sanitize[i]
 	}
 
-	const source = `return function mirror(v){${f}}`
+	const source = `${fns}return function mirror(v){${f}}`
 
 	if (emit)
 		return {
