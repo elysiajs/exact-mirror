@@ -1,3 +1,8 @@
+# 1.2.2 - 15 Jun 2026
+Bug fix:
+- building a mirror over a union no longer throws on a **frozen** union member (e.g. Elysia's `Object.freeze`d coercion singletons)
+- a plain `Ref` used as a union member is now resolved against `definitions` before the union's Compile gate, so the ref branch validates and `decode`s instead of falling through undecoded
+
 # 1.2.1 - 15 Jun 2026
 Bug fix:
 - `decode` / `encode` now transform codec leaves inside a TypeBox `Type.Intersect` (`~kind: 'Intersect'`)

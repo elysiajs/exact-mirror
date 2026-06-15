@@ -12,6 +12,23 @@ export const copySchema = <T>(node: T): T =>
 		Object.getOwnPropertyDescriptors(node)
 	)
 
+const copySchemaWith = <T>(node: T, overrides: Record<string, unknown>): T => {
+	const descriptors = Object.getOwnPropertyDescriptors(node) as Record<
+		string,
+		PropertyDescriptor
+	>
+
+	for (const key in overrides)
+		descriptors[key] = {
+			value: overrides[key],
+			writable: true,
+			enumerable: descriptors[key]?.enumerable ?? true,
+			configurable: true
+		}
+
+	return Object.create(Object.getPrototypeOf(node), descriptors)
+}
+
 interface BaseSchema {
 	'~kind': string
 	id?: string
@@ -357,9 +374,9 @@ const withDefs = (type: AnySchema, group: CyclicGroup): AnySchema => {
 	let entry = '~check'
 	while (entry in group.defs) entry += '~'
 
-	// TypeBox use non-enumerable properties
-	const def = copySchema(type)
-	def.$id = entry
+	// TypeBox use non-enumerable properties; force `$id` writable in case
+	// `type` is a frozen schema that already carries a non-writable `$id`
+	const def = copySchemaWith(type, { $id: entry })
 
 	return Object.defineProperty(
 		{ $defs: { ...group.defs, [entry]: def }, $ref: entry },
@@ -406,6 +423,13 @@ const handleUnion = (
 		if (type[Kind] === 'This')
 			return deepClone(instruction.definitions[type.$ref])
 
+		if (
+			type[Kind] === 'Ref' &&
+			!instruction.cyclicDefs &&
+			type.$ref in instruction.definitions
+		)
+			return instruction.definitions[type.$ref]
+
 		return type
 	}
 
@@ -417,18 +441,16 @@ const handleUnion = (
 		let type = unwrapRef(schemas[i])
 
 		// Resolve nested refs without mutating the caller's schema node
-		if (Array.isArray(type.anyOf)) {
-			const anyOf = type.anyOf.map(unwrapRef)
-
-			type = copySchema(type)
-			type.anyOf = anyOf
-		} else if (type.items) {
+		// A union member can be a frozen singleton (e.g. Elysia's coercion
+		// types), so the copy must force the rewritten member writable.
+		if (Array.isArray(type.anyOf))
+			type = copySchemaWith(type, { anyOf: type.anyOf.map(unwrapRef) })
+		else if (type.items) {
 			const items = Array.isArray(type.items)
 				? type.items.map((item) => unwrapRef(item))
 				: unwrapRef(type.items)
 
-			type = copySchema(type)
-			type.items = items
+			type = copySchemaWith(type, { items })
 		}
 
 		typeChecks.push(

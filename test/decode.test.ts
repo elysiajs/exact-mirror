@@ -340,3 +340,50 @@ describe('decode mode emit', () => {
 		expect(fn({ id: 2 })).toEqual({ id: 2 })
 	})
 })
+
+describe('decode mode — frozen union members & union refs (regression)', () => {
+	// Elysia's coercion types are Object.freeze'd singletons reused as union
+	// members. A frozen node's `anyOf`/`items` descriptor is non-writable, so
+	// the old `copySchema(node); node.anyOf = …` threw and the whole subtree
+	// silently degraded to identity (the value passed through undecoded).
+	const FrozenNumeric = Object.freeze(t.Union([t.Number(), StringToNumber]))
+
+	it('decode a frozen union node used as a union member', () => {
+		const shape = t.Object({
+			a: t.Union([t.Array(FrozenNumeric), FrozenNumeric])
+		})
+		const mirror = createMirror(shape, { decode: true, Compile })
+
+		expect(mirror({ a: ['7', '8'] })).toEqual({ a: [7, 8] })
+		expect(mirror({ a: '9' })).toEqual({ a: 9 })
+	})
+
+	it('decode a complex/nested union (array-of-union | scalar)', () => {
+		const inner = t.Union([t.Object({ x: Numeric }), Numeric])
+		const shape = t.Union([t.Array(inner), Numeric])
+		const mirror = createMirror(shape, { decode: true, Compile })
+
+		expect(mirror(['1', { x: '2' }] as any)).toEqual([1, { x: 2 }])
+		expect(mirror('5' as any)).toEqual(5)
+	})
+
+	it('decode a $ref branch inside a union', () => {
+		const shape = t.Object({ a: t.Union([t.Ref('Item'), t.Null()]) })
+		const mirror = createMirror(shape as any, {
+			decode: true,
+			Compile,
+			definitions: { Item: t.Object({ n: Numeric }) } as any
+		})
+
+		expect(mirror({ a: { n: '9' } } as any)).toEqual({ a: { n: 9 } })
+		expect(mirror({ a: null } as any)).toEqual({ a: null })
+	})
+
+	it('building a decode mirror does not mutate a frozen union member', () => {
+		const before = JSON.stringify(Value.Create(FrozenNumeric))
+		createMirror(t.Object({ a: FrozenNumeric }), { decode: true, Compile })
+
+		expect(JSON.stringify(Value.Create(FrozenNumeric))).toBe(before)
+		expect(Object.isFrozen(FrozenNumeric)).toBe(true)
+	})
+})
