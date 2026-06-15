@@ -1,6 +1,6 @@
 {
 	"name": "exact-mirror",
-	"version": "1.1.1",
+	"version": "1.2.0",
 	"description": "Mirror exact value to TypeBox/OpenAPI model",
 	"license": "MIT",
 	"scripts": {
@@ -23,7 +23,7 @@
 		"elysia": "^1.4.28",
 		"eslint": "9.6.0",
 		"mitata": "^1.0.33",
-		"tsup": "^8.1.0",
+		"tsdown": "^0.22.2",
 		"tsx": "^4.19.2",
 		"typebox": "^1.1.15",
 		"typescript": "^6.0.0"
@@ -36,7 +36,7 @@
 		".": {
 			"types": "./dist/index.d.ts",
 			"import": "./dist/index.mjs",
-			"require": "./dist/cjs/index.js"
+			"require": "./dist/index.js"
 		}
 	},
 	"keywords": [

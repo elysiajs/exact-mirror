@@ -1,3 +1,10 @@
+# 1.2.0 - 15 Jun 2026
+Feature:
+- add `decode` / `encode` codec transform mode. A drop in replacement for TypeBox Value.Decode
+
+Bug fix:
+- `deepClone` overflowed the stack on circular references through objects; the circular-reference guard now registers object clones before recursing (it already did so for arrays)
+
 # 1.1.1 - 10 Jun 2026
 Bug fix:
 - escape special characters in property names: quotes, backslashes, newlines, backticks etc. previously produced a `SyntaxError` (or could inject into the generated code); detection is now identifier-based and names are escaped with `JSON.stringify`

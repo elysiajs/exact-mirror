@@ -3,6 +3,7 @@ import type { Compile, Validator } from 'typebox/compile'
 
 const Kind = '~kind'
 const Hint = '~hint'
+const Codec = '~codec'
 
 interface BaseSchema {
 	'~kind': string
@@ -65,7 +66,8 @@ const joinProperty = (v1: string, v2: string | number, isOptional = false) => {
 	return `${v1}${isOptional ? '?' : ''}.${v2}`
 }
 
-const encodeProperty = (v: string) => (isSpecialProperty(v) ? JSON.stringify(v) : v)
+const encodeProperty = (v: string) =>
+	isSpecialProperty(v) ? JSON.stringify(v) : v
 
 const sanitize = (key: string, sanitize = 0, schema: AnySchema) => {
 	// @ts-expect-error
@@ -122,6 +124,18 @@ export interface Instruction<Emit extends boolean = false> {
 	sanitize: MaybeArray<(v: string) => string> | undefined
 	fromUnion?: boolean
 	emit?: Emit
+	/**
+	 * Apply a TypeBox codec's `~codec` transform at codec leaves during the
+	 * mirror walk, instead of only cleaning the value.
+	 *
+	 * @default undefined — pure clean, no transform
+	 */
+	transform?: 'decode' | 'encode'
+	/**
+	 * Codec transform functions collected during codegen, referenced from the
+	 * generated source by index as `d.codecs[i]`
+	 */
+	codecs: Function[]
 	/**
 	 * TypeCompiler is required when using Union
 	 *
@@ -255,20 +269,18 @@ export function deepClone<T>(source: T, weak = new WeakMap<object, any>()): T {
 		return copy as any
 	}
 
-	if (typeof source === 'object') {
-		const keys = Object.keys(source).concat(
-			Object.getOwnPropertySymbols(source) as any[]
-		)
+	// anything reaching here is a non-null, non-function, non-array object
+	const keys = Object.keys(source).concat(
+		Object.getOwnPropertySymbols(source) as any[]
+	)
 
-		const cloned: Partial<T> = {}
+	const cloned: Partial<T> = Object.create(null)
+	weak.set(source, cloned)
 
-		for (const key of keys)
-			cloned[key as keyof T] = deepClone((source as any)[key], weak)
+	for (const key of keys)
+		cloned[key as keyof T] = deepClone((source as any)[key], weak)
 
-		return cloned as T
-	}
-
-	return source
+	return cloned as T
 }
 
 interface CyclicGroup {
@@ -465,6 +477,18 @@ const mirror = (
 	const optionalsLength = instruction.optionals.length
 
 	try {
+		if (instruction.transform && Codec in schema) {
+			const codec = (schema as any)[Codec][instruction.transform]
+
+			let ci = instruction.codecs.indexOf(codec)
+			if (ci === -1) ci = instruction.codecs.push(codec) - 1
+
+			const transformed = `d.codecs[${ci}](${property})`
+			const body = mirrorNode(schema, transformed, instruction)
+
+			return isRoot ? `return ${body}` : body
+		}
+
 		if (Kind in schema && schema[Kind] === 'Cyclic') {
 			const call = handleCyclic(schema, property, instruction)
 
@@ -574,17 +598,6 @@ const mirrorNode = (
 							// No dot, must be bracket notation
 							refName = name.slice(property.length)
 						}
-						// Normalize optional chaining for deletion code
-						// ?.field -> .field, ?.["field"] -> ["field"]
-						if (refName.startsWith('?.')) {
-							if (refName.charAt(2) === '[') {
-								// Bracket notation: ?.["x"] -> ["x"]
-								refName = refName.slice(2)
-							} else {
-								// Dot notation: ?.x -> .x
-								refName = refName.slice(1)
-							}
-						}
 						const array = instruction.optionalsInArray
 
 						if (array[index]) {
@@ -637,10 +650,17 @@ const mirrorNode = (
 					schema.items.$ref !== undefined &&
 					schema.items.$ref in instruction.cyclicDefs.names
 
+				// a scalar codec leaf as items must transform per element, so
+				// it can't take the identity shortcuts below
+				const codecItems =
+					instruction.transform !== undefined &&
+					!Array.isArray(schema.items) &&
+					Codec in schema.items!
+
 				if (Array.isArray(schema.items)) {
 					v = handleTuple(schema.items, property, instruction)
 					break
-				} else if (!cyclicItems) {
+				} else if (!cyclicItems && !codecItems) {
 					// cyclic ref items continue to the loop below,
 					// mirroring to a per-item function call
 					if (isRoot && !Array.isArray(schema.items!.anyOf))
@@ -691,12 +711,8 @@ const mirrorNode = (
 			if (optionals) {
 				// optional index
 				for (let oi = 0; oi < optionals.length; oi++) {
-					// since pointer is checked in object case with ternary as undefined, this is not need
-					// const pointer = `ar${i}p.${optionals[oi]}`
-
 					const target = `ar${i}v[i]${optionals[oi]}`
 
-					// we can add semi-colon here because it delimit recursive mirror
 					v += `;if(${target}===undefined)delete ${target}`
 				}
 				// Clear the optionals array after use to prevent pollution across sibling arrays
@@ -758,6 +774,7 @@ export interface Manifest {
 	source: string
 	externals: {
 		unions: Validator<any, TSchema, unknown, unknown>[][]
+		codecs?: Function[]
 		hof?: Record<string, Function>
 	}
 }
@@ -771,7 +788,9 @@ export const createMirror = <T extends TSchema, Emit extends boolean = false>(
 		sanitize,
 		recursionLimit = 8,
 		removeUnknownUnionType = false,
-		emit
+		emit,
+		decode,
+		encode
 	}: Partial<
 		Pick<
 			Instruction<Emit>,
@@ -783,9 +802,26 @@ export const createMirror = <T extends TSchema, Emit extends boolean = false>(
 			| 'removeUnknownUnionType'
 			| 'emit'
 		>
-	> = {}
+	> & {
+		/**
+		 * Apply each codec's `~codec.decode` at codec leaves (parse input,
+		 * e.g. numeric string → number) on top of the clean walk
+		 *
+		 * The value is assumed to have already passed `Check`
+		 *
+		 * @default false
+		 */
+		decode?: boolean
+		/**
+		 * Apply each codec's `~codec.encode` at codec leaves
+		 *
+		 * @default false
+		 */
+		encode?: boolean
+	} = Object.create(null)
 ): Emit extends true ? Manifest : (v: Static<T>) => Static<T> => {
 	const unions = <Instruction['unions']>[]
+	const codecs: Function[] = []
 	const cyclic: CyclicContext = { groups: new Map(), fns: [], count: 0 }
 
 	if (typeof sanitize === 'function') sanitize = [sanitize]
@@ -796,21 +832,24 @@ export const createMirror = <T extends TSchema, Emit extends boolean = false>(
 		array: 0,
 		parentIsOptional: false,
 		unions,
-		unionKeys: {},
+		unionKeys: Object.create(null),
 		Compile,
 		modules,
 		// @ts-ignore private property
-		definitions: definitions ?? modules?.$defs ?? {},
+		definitions: definitions ?? modules?.$defs ?? Object.create(null),
 		cyclic,
 		sanitize,
 		recursion: 0,
 		recursionLimit,
-		removeUnknownUnionType
+		removeUnknownUnionType,
+		// decode takes precedence if both are passed
+		transform: decode ? 'decode' : encode ? 'encode' : undefined,
+		codecs
 	})
 
 	const fns = cyclic.fns.length ? cyclic.fns.join('\n') + '\n' : ''
 
-	if (!unions.length && !sanitize?.length) {
+	if (!unions.length && !sanitize?.length && !codecs.length) {
 		if (emit) return { source: fns + f, externals: undefined } as any
 
 		return Function('v', fns + f) as any
@@ -818,8 +857,8 @@ export const createMirror = <T extends TSchema, Emit extends boolean = false>(
 
 	let hof: Record<string, Function> | undefined
 	if (sanitize?.length) {
-		hof = {}
-		for (let i = 0; i < sanitize.length; i++) hof[`h${i}`] = sanitize[i]
+		hof = Object.create(null)
+		for (let i = 0; i < sanitize.length; i++) hof![`h${i}`] = sanitize[i]
 	}
 
 	const source = `${fns}return function mirror(v){${f}}`
@@ -829,25 +868,17 @@ export const createMirror = <T extends TSchema, Emit extends boolean = false>(
 			source,
 			externals: {
 				unions,
+				codecs: codecs.length ? codecs : undefined,
 				hof
 			}
 		} as any
 
-	return Function(
-		'd',
-		source
-	)(
-		hof
-			? unions
-				? {
-						unions,
-						...hof
-					}
-				: hof
-			: unions
-				? { unions }
-				: undefined
-	) as any
+	const d: Record<string, unknown> = Object.create(null)
+	if (unions.length) d.unions = unions
+	if (codecs.length) d.codecs = codecs
+	if (hof) Object.assign(d, hof)
+
+	return Function('d', source)(d) as any
 }
 
 export default createMirror
