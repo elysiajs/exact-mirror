@@ -5,6 +5,13 @@ const Kind = '~kind'
 const Hint = '~hint'
 const Codec = '~codec'
 
+// shallow copy, preserve TypeBox metadata (`~codec`/`~kind`/`~refine`)
+export const copySchema = <T>(node: T): T =>
+	Object.create(
+		Object.getPrototypeOf(node),
+		Object.getOwnPropertyDescriptors(node)
+	)
+
 interface BaseSchema {
 	'~kind': string
 	id?: string
@@ -79,17 +86,12 @@ const sanitize = (key: string, sanitize = 0, schema: AnySchema) => {
 }
 
 export const mergeObjectIntersection = (schema: AnySchema): AnySchema => {
-	if (
-		!schema.allOf ||
-		(Kind in schema &&
-			(schema[Kind] !== 'Intersect' || schema.type !== 'object'))
-	)
+	if (!schema.allOf || (Kind in schema && schema[Kind] !== 'Intersect'))
 		return schema
 
 	const { allOf, ...newSchema } = schema
 	newSchema.properties = {}
-
-	if (Kind in newSchema) newSchema[Kind] = 'Object'
+	newSchema.type = 'object'
 
 	for (const type of allOf) {
 		if (type.type !== 'object') continue
@@ -269,16 +271,17 @@ export function deepClone<T>(source: T, weak = new WeakMap<object, any>()): T {
 		return copy as any
 	}
 
-	// anything reaching here is a non-null, non-function, non-array object
-	const keys = Object.keys(source).concat(
-		Object.getOwnPropertySymbols(source) as any[]
-	)
-
-	const cloned: Partial<T> = Object.create(null)
+	const cloned: any = Object.create(Object.getPrototypeOf(source))
 	weak.set(source, cloned)
 
-	for (const key of keys)
-		cloned[key as keyof T] = deepClone((source as any)[key], weak)
+	const descriptors = Object.getOwnPropertyDescriptors(source)
+	for (const key of Reflect.ownKeys(descriptors)) {
+		const descriptor = (descriptors as any)[key]
+		if ('value' in descriptor)
+			descriptor.value = deepClone(descriptor.value, weak)
+
+		Object.defineProperty(cloned, key, descriptor)
+	}
 
 	return cloned as T
 }
@@ -355,10 +358,7 @@ const withDefs = (type: AnySchema, group: CyclicGroup): AnySchema => {
 	while (entry in group.defs) entry += '~'
 
 	// TypeBox use non-enumerable properties
-	const def = Object.create(
-		Object.getPrototypeOf(type),
-		Object.getOwnPropertyDescriptors(type)
-	)
+	const def = copySchema(type)
 	def.$id = entry
 
 	return Object.defineProperty(
@@ -416,14 +416,19 @@ const handleUnion = (
 	for (let i = 0; i < schemas.length; i++) {
 		let type = unwrapRef(schemas[i])
 
-		if (Array.isArray(type.anyOf))
-			for (let i = 0; i < type.anyOf.length; i++)
-				type.anyOf[i] = unwrapRef(type.anyOf[i])
-		else if (type.items) {
-			if (Array.isArray(type.items))
-				for (let i = 0; i < type.items.length; i++)
-					type.items[i] = unwrapRef(type.items[i])
-			else type.items = unwrapRef(type.items)
+		// Resolve nested refs without mutating the caller's schema node
+		if (Array.isArray(type.anyOf)) {
+			const anyOf = type.anyOf.map(unwrapRef)
+
+			type = copySchema(type)
+			type.anyOf = anyOf
+		} else if (type.items) {
+			const items = Array.isArray(type.items)
+				? type.items.map((item) => unwrapRef(item))
+				: unwrapRef(type.items)
+
+			type = copySchema(type)
+			type.items = items
 		}
 
 		typeChecks.push(
@@ -531,6 +536,9 @@ const mirrorNode = (
 
 		return isRoot ? `return ${call}` : call
 	}
+
+	if (Kind in schema && schema[Kind] === 'Intersect' && schema.allOf)
+		schema = mergeObjectIntersection(schema)
 
 	if (
 		isRoot &&

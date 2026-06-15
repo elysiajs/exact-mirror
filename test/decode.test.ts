@@ -4,7 +4,7 @@ import { Value } from 'typebox/value'
 
 import { describe, expect, it } from 'bun:test'
 
-import { createMirror } from '../src'
+import { createMirror, deepClone } from '../src'
 
 // string -> number codec; base ~kind is String, ~codec is non-enumerable
 const StringToNumber = t
@@ -153,6 +153,151 @@ describe('transform off (default)', () => {
 
 		// no unions, no sanitize, no codecs collected → no externals
 		expect(externals).toBeUndefined()
+	})
+})
+
+describe('deepClone preserves TypeBox metadata (non-enumerable)', () => {
+	it('keep ~codec / ~kind and a working transform', () => {
+		const clone = deepClone(StringToNumber) as any
+
+		expect('~codec' in clone).toBe(true)
+		expect('~kind' in clone).toBe(true)
+		// the cloned codec still decodes/encodes
+		expect(clone['~codec'].decode('5')).toBe(5)
+		expect(clone['~codec'].encode(5)).toBe('5')
+	})
+
+	it('keep ~refine', () => {
+		const refined = (t as any).Refine(
+			t.String(),
+			(s: string) => s.length > 2,
+			'too short'
+		)
+		const clone = deepClone(refined) as any
+
+		expect('~refine' in clone).toBe(true)
+		expect('~kind' in clone).toBe(true)
+	})
+})
+
+describe('codec inside Intersect (decode)', () => {
+	// Bug 1: TypeBox `Type.Intersect` is `{ '~kind': 'Intersect', allOf }` with
+	// no `type`, so codec leaves inside it were never threaded into the walk.
+	const schema = t.Intersect([
+		t.Object({ foo: t.String() }),
+		t.Object({
+			field: t
+				.Codec(t.String())
+				.Decode((d: string) => ({ decoded: d }))
+				.Encode((v: { decoded: string }) => v.decoded)
+		})
+	])
+
+	it('decode codec leaves inside an intersect, matching Value.Decode', () => {
+		const mirror = createMirror(schema, { Compile, decode: true })
+		const input = { field: 'bar', foo: 'test' }
+
+		expect(mirror(input as any)).toEqual(Value.Decode(schema, input) as any)
+	})
+
+	it('still strips excess keys (clean output matches Value.Clean)', () => {
+		const mirror = createMirror(schema, { Compile })
+		const input = { field: 'bar', foo: 'test', junk: 1 }
+
+		expect(mirror(input as any)).toEqual(
+			Value.Clean(schema, structuredClone(input)) as any
+		)
+	})
+})
+
+describe('decode build does not mutate the input union schema (Bug 2)', () => {
+	const StringToBool = t
+		.Codec(t.String())
+		.Decode((s: string) => s === 'true')
+		.Encode((b: boolean) => '' + b)
+
+	const u = t.Union([t.Boolean(), StringToBool])
+	const shape = t.Object({
+		flag: u,
+		list: t.Array(u),
+		nested: t.Object({ f: u })
+	})
+
+	it('keeps member identity, ~codec, and downstream Value.* across builds', () => {
+		const memberBefore = (u as any).anyOf[1]
+
+		const encoded = {
+			flag: 'true',
+			list: ['true', 'false'],
+			nested: { f: 'true' }
+		}
+		const decoded = { flag: true, list: [true, false], nested: { f: true } }
+
+		// baseline on the SAME schema instance, before any mirror is built
+		const decodeBefore = Value.Decode(shape, structuredClone(encoded))
+		const createBefore = Value.Create(shape)
+
+		// building decode mirrors must not corrupt the shared schema — run twice
+		createMirror(shape, { Compile, decode: true })
+		createMirror(shape, { Compile, decode: true })
+
+		// the caller's union node is byte-identical: same member object, codec intact
+		expect((u as any).anyOf[1]).toBe(memberBefore)
+		expect('~codec' in (u as any).anyOf[1]).toBe(true)
+
+		// Value.Decode / Value.Create on the same instance are unchanged
+		expect(decodeBefore).toEqual(decoded as any)
+		expect(Value.Decode(shape, structuredClone(encoded))).toEqual(
+			decoded as any
+		)
+		expect(Value.Create(shape)).toEqual(createBefore as any)
+	})
+})
+
+describe('Optional + Union + Codec combination (decode)', () => {
+	// exercises copySchema in the real handleUnion path: the optional union
+	// member must be copied without dropping `~codec` / `~optional`
+	const shape = t.Object({
+		id: t.Optional(t.Union([t.Number(), StringToNumber]))
+	})
+
+	it('decode a present numeric-string through an optional union codec', () => {
+		const mirror = createMirror(shape, { Compile, decode: true })
+
+		expect(mirror({ id: '2' })).toEqual({ id: 2 })
+	})
+
+	it('leave a present number untouched', () => {
+		const mirror = createMirror(shape, { Compile, decode: true })
+
+		expect(mirror({ id: 2 })).toEqual({ id: 2 })
+	})
+
+	it('omit a missing optional', () => {
+		const mirror = createMirror(shape, { Compile, decode: true })
+
+		expect(mirror({})).toEqual({})
+	})
+
+	it('match Value.Decode across present / absent', () => {
+		const mirror = createMirror(shape, { Compile, decode: true })
+
+		expect(mirror({ id: '2' })).toEqual(Value.Decode(shape, { id: '2' }) as any)
+		expect(mirror({})).toEqual(Value.Decode(shape, {}) as any)
+	})
+
+	it('does not mutate the shared union node (Bug 2) — modifiers survive', () => {
+		const union = (shape.properties.id as any)
+		const memberBefore = union.anyOf[1]
+
+		createMirror(shape, { Compile, decode: true })
+		createMirror(shape, { Compile, decode: true })
+
+		expect(union.anyOf[1]).toBe(memberBefore)
+		expect('~codec' in union.anyOf[1]).toBe(true)
+		// `~optional` lives on the union node itself; it must be intact too
+		expect(union['~optional']).toBe(true)
+		expect(Value.Decode(shape, { id: '2' })).toEqual({ id: 2 } as any)
 	})
 })
 

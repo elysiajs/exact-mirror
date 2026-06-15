@@ -1,3 +1,10 @@
+# 1.2.1 - 15 Jun 2026
+Bug fix:
+- `decode` / `encode` now transform codec leaves inside a TypeBox `Type.Intersect` (`~kind: 'Intersect'`)
+- Intersect is flattened into a merged object before the walk, so its codecs are reached (previously the whole node was passed through as identity)
+- `deepClone` preserved only enumerable own properties, silently dropping TypeBox non-enumerable `~codec`, `~kind`, `~refine` and the prototype
+- building a `decode` / `encode` mirror over a union no longer mutates the caller's schema
+
 # 1.2.0 - 15 Jun 2026
 Feature:
 - add `decode` / `encode` codec transform mode. A drop in replacement for TypeBox Value.Decode
