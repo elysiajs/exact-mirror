@@ -210,7 +210,7 @@ const handleRecord = (
 	let v =
 		`(()=>{` +
 		`const ar${i}s=Object.keys(${property}),` +
-		`ar${i}v={};` +
+		`ar${i}v=Object.create(null);` +
 		`for(let i=0;i<ar${i}s.length;i++){` +
 		`const ar${i}p=${property}[ar${i}s[i]];` +
 		`ar${i}v[ar${i}s[i]]=${mirror(child as AnySchema, `ar${i}p`, instruction)}`
@@ -226,7 +226,7 @@ const handleRecord = (
 		instruction.optionalsInArray[i + 1] = []
 	}
 
-	v += `}` + `return ar${i}v` + `})()`
+	v += `}` + `return Object.setPrototypeOf(ar${i}v,Object.prototype)` + `})()`
 
 	return v
 }
