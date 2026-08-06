@@ -1,3 +1,8 @@
+# 1.2.4 - 7 Aug 2026
+
+Bug fix:
+- codec missing field is sometime lossy
+
 # 1.2.3 - 6 Aug 2026
 
 Security fix:
