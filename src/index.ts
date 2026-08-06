@@ -140,6 +140,16 @@ export interface Instruction<Emit extends boolean = false> {
 	array: number
 	unions: Validator<any>[][]
 	unionKeys: Record<string, 1>
+	/**
+	 * Optional keys discovered underneath a union that owns a codec branch
+	 *
+	 * Such a codec can hand back a container of a different type than the input
+	 * (Elysia's `t.ObjectString` decodes a string into an object), which leaves
+	 * the input path for these keys unreachable, so it must not gate cleanup
+	 */
+	codecContainerKeys: Record<string, 1>
+	/** Set while mirroring the branches of a union that owns a codec branch. */
+	underCodecContainer?: boolean
 	sanitize: MaybeArray<(v: string) => string> | undefined
 	fromUnion?: boolean
 	emit?: Emit
@@ -339,6 +349,8 @@ const handleCyclic = (
 					optionals: [],
 					optionalsInArray: [],
 					unionKeys: {},
+					codecContainerKeys: {},
+					underCodecContainer: false,
 					array: 0,
 					recursion: 0
 				})}}`
@@ -412,6 +424,11 @@ const handleUnion = (
 
 	instruction.unionKeys[property] = 1
 
+	const underCodecContainer =
+		instruction.underCodecContainer ||
+		(!!instruction.transform &&
+			schemas.some((type) => type && Codec in type))
+
 	const ui = instruction.unions.length
 	const typeChecks = (instruction.unions[ui] = <Validator<any>[]>[])
 
@@ -467,7 +484,8 @@ const handleUnion = (
 				...instruction,
 				recursion: instruction.recursion + 1,
 				parentIsOptional: true,
-				fromUnion: true
+				fromUnion: true,
+				underCodecContainer
 			}
 		)}}\n`
 
@@ -478,7 +496,8 @@ const handleUnion = (
 				...instruction,
 				recursion: instruction.recursion + 1,
 				parentIsOptional: true,
-				fromUnion: true
+				fromUnion: true,
+				underCodecContainer
 			}) +
 			`\nif(d.unions[${ui}][${i}].Check(tmp))return tmp\n`
 	}
@@ -620,23 +639,19 @@ const mirrorNode = (
 
 					if (property.startsWith('ar')) {
 						const dotIndex = name.indexOf('.')
-						let refName
-						if (dotIndex >= 0) {
-							// Has a dot, extract from the dot onwards
-							refName = name.slice(dotIndex)
-						} else {
-							// No dot, must be bracket notation
-							refName = name.slice(property.length)
-						}
+						const refName = name.slice(
+							dotIndex >= 0 ? dotIndex : property.length
+						)
+
 						const array = instruction.optionalsInArray
 
-						if (array[index]) {
-							array[index].push(refName)
-						} else {
-							array[index] = [refName]
-						}
+						if (array[index]) array[index].push(refName)
+						else array[index] = [refName]
 					} else {
 						instruction.optionals.push(name)
+
+						if (instruction.underCodecContainer)
+							instruction.codecContainerKeys[name] = 1
 					}
 				}
 
@@ -787,14 +802,26 @@ const mirrorNode = (
 		const key = instruction.optionals[i]
 		const prop = key.slice(1)
 
+		// 63 is '?'
+		const shouldQuestion =
+			prop.charCodeAt(0) !== 63 && schema.type !== 'array'
+
+		const target = `x${shouldQuestion ? (prop.charCodeAt(0) === 91 ? '?.' : '?') : ''}${prop}`
+
+		// Behind a codec that swaps the container's type, the input path is
+		// unreachable and would read `undefined` for every decoded key, so the
+		// mirrored output is the only trustworthy witness here.
+		if (instruction.codecContainerKeys[key]) {
+			v += `if(x${prop}===undefined)delete ${target}\n`
+
+			continue
+		}
+
 		v += `if(${key}===undefined`
 
 		if (instruction.unionKeys[key]) v += `||x${prop}===undefined`
 
-		// 63 is '?'
-		const shouldQuestion =
-			prop.charCodeAt(0) !== 63 && schema.type !== 'array'
-		v += `)delete x${shouldQuestion ? (prop.charCodeAt(0) === 91 ? '?.' : '?') : ''}${prop}\n`
+		v += `)delete ${target}\n`
 	}
 
 	return `${v}return x`
@@ -863,6 +890,7 @@ export const createMirror = <T extends TSchema, Emit extends boolean = false>(
 		parentIsOptional: false,
 		unions,
 		unionKeys: Object.create(null),
+		codecContainerKeys: Object.create(null),
 		Compile,
 		modules,
 		// @ts-ignore private property
