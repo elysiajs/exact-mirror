@@ -335,4 +335,75 @@ describe('Cyclic', () => {
 			}
 		})
 	})
+
+	it('resolve cyclic $defs over a same-named definition', () => {
+		// TypeBox resolves a `$ref` from the compile context before the
+		// schema's own `$defs`, so a definition sharing a name with a cyclic
+		// one must not shadow it when compiling a union branch
+		const shape = t.Cyclic(
+			{
+				a: t.Object({
+					type: t.String(),
+					data: t.Union([
+						t.Object({ another: t.Ref('a') }),
+						t.Null()
+					])
+				})
+			},
+			'a'
+		)
+
+		const mirror = createMirror(shape, {
+			Compile,
+			definitions: { a: t.Object({ unrelated: t.Number() }) }
+		})
+
+		expect(
+			mirror({
+				type: 'yea',
+				extra: 'x',
+				data: {
+					extra: 'x',
+					another: {
+						type: 'ok',
+						extra: 'x',
+						data: null
+					}
+				}
+			} as any)
+		).toEqual({
+			type: 'yea',
+			data: {
+				another: {
+					type: 'ok',
+					data: null
+				}
+			}
+		})
+	})
+
+	it('resolve a direct cyclic ref union member over a same-named definition', () => {
+		const mirror = createMirror(node, {
+			Compile,
+			definitions: { a: t.Object({ unrelated: t.Number() }) }
+		})
+
+		expect(
+			mirror({
+				type: 'yea',
+				extra: 'x',
+				data: {
+					type: 'ok',
+					extra: 'x',
+					data: null
+				}
+			} as any)
+		).toEqual({
+			type: 'yea',
+			data: {
+				type: 'ok',
+				data: null
+			}
+		})
+	})
 })

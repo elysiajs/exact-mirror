@@ -397,6 +397,30 @@ const withDefs = (type: AnySchema, group: CyclicGroup): AnySchema => {
 	) as AnySchema
 }
 
+// a branch subtree only needs the definitions context when it holds a `$ref`
+const hasRef = (schema: unknown, seen = new Set<object>()): boolean => {
+	if (schema === null || typeof schema !== 'object') return false
+	if (seen.has(schema)) return false
+	seen.add(schema)
+
+	if (Array.isArray(schema)) {
+		for (let i = 0; i < schema.length; i++)
+			if (hasRef(schema[i], seen)) return true
+
+		return false
+	}
+
+	for (const key in schema) {
+		const value = (<Record<string, unknown>>schema)[key]
+
+		if (key === '$ref' && typeof value === 'string') return true
+
+		if (hasRef(value, seen)) return true
+	}
+
+	return false
+}
+
 const handleUnion = (
 	schemas: AnySchema[],
 	property: string,
@@ -450,6 +474,13 @@ const handleUnion = (
 		return type
 	}
 
+	// context shadows `$defs`, cyclic defs must win
+	const context = instruction.cyclicDefs
+		? { ...instruction.definitions, ...instruction.cyclicDefs.defs }
+		: instruction.definitions
+
+	const hasDefinitions = Object.keys(context).length !== 0
+
 	// some type require cleaning before checking
 	// e.g. object with `additionalProperties: false`
 	let cleanThenCheck = ''
@@ -470,12 +501,15 @@ const handleUnion = (
 			type = copySchemaWith(type, { items })
 		}
 
+		const check = instruction.cyclicDefs
+			? (withDefs(type, instruction.cyclicDefs) as any)
+			: type
+
+		// nested `$ref` needs definitions as context
 		typeChecks.push(
-			instruction.Compile(
-				instruction.cyclicDefs
-					? (withDefs(type, instruction.cyclicDefs) as any)
-					: type
-			)
+			hasDefinitions && hasRef(type)
+				? instruction.Compile(context as any, check)
+				: instruction.Compile(check)
 		)
 		v += `if(d.unions[${ui}][${i}].Check(${property})){return ${mirror(
 			type,
