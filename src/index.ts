@@ -262,6 +262,40 @@ const handleUnion = (
 		return type
 	}
 
+	// resolve nested `This` so TypeBox can hoist `$id` when compiling a branch alone
+	const unwrapNestedRef = (type: TAnySchema): TAnySchema => {
+		if (!type || typeof type !== 'object') return type
+
+		if (
+			Kind in type &&
+			type[Kind] === 'This' &&
+			type.$ref in instruction.definitions
+		)
+			return instruction.definitions[type.$ref]
+
+		if (Array.isArray(type.anyOf))
+			return { ...type, anyOf: type.anyOf.map(unwrapNestedRef) }
+
+		if (type.properties) {
+			const properties = <Record<string, TAnySchema>>{}
+
+			for (const key of Object.keys(type.properties))
+				properties[key] = unwrapNestedRef(type.properties[key])
+
+			return { ...type, properties }
+		}
+
+		if (type.items)
+			return {
+				...type,
+				items: Array.isArray(type.items)
+					? type.items.map(unwrapNestedRef)
+					: unwrapNestedRef(type.items)
+			}
+
+		return type
+	}
+
 	// some type require cleaning before checking
 	// e.g. object with `additionalProperties: false`
 	let cleanThenCheck = ''
@@ -279,7 +313,7 @@ const handleUnion = (
 			else type.items = unwrapRef(type.items)
 		}
 
-		typeChecks.push(TypeCompiler.Compile(type))
+		typeChecks.push(TypeCompiler.Compile(unwrapNestedRef(type)))
 		v += `if(d.unions[${ui}][${i}].Check(${property})){return ${mirror(
 			type,
 			property,

@@ -97,4 +97,99 @@ describe('Recursive', () => {
 
 		isEqual(shape, value)
 	})
+
+	it('handle reference nested in an object of an union branch', () => {
+		const shape = t.Recursive((This) =>
+			t.Object({
+				a: t.Union([t.Object({ another_a: This }), t.Literal('x')])
+			})
+		)
+
+		const value = {
+			a: {
+				another_a: {
+					a: {
+						another_a: {
+							a: 'x'
+						}
+					}
+				}
+			}
+		} satisfies typeof shape.static
+
+		isEqual(shape, value)
+
+		isEqual(
+			shape,
+			{
+				a: {
+					another_a: {
+						a: 'x',
+						unknown: 'b'
+					},
+					unknown: 'c'
+				},
+				unknown: 'd'
+			} as typeof shape.static,
+			{
+				a: {
+					another_a: {
+						a: 'x'
+					}
+				}
+			}
+		)
+	})
+
+	it('handle optional reference nested in an object of an union branch', () => {
+		const shape = t.Recursive((This) =>
+			t.Object({
+				a: t.Optional(
+					t.Union([t.Object({ another_a: This }), t.Literal('x')])
+				)
+			})
+		)
+
+		const value = {
+			a: {
+				another_a: {
+					a: {
+						another_a: {}
+					}
+				}
+			}
+		} satisfies typeof shape.static
+
+		isEqual(shape, value)
+		isEqual(shape, {})
+	})
+
+	it('handle reference in an array of an union branch', () => {
+		const shape = t.Recursive((This) =>
+			t.Object({
+				a: t.Union([
+					t.Array(t.Object({ another_a: This })),
+					t.Literal('x')
+				])
+			})
+		)
+
+		const value = {
+			a: [
+				{
+					another_a: {
+						a: [
+							{
+								another_a: {
+									a: 'x'
+								}
+							}
+						]
+					}
+				}
+			]
+		} satisfies typeof shape.static
+
+		isEqual(shape, value)
+	})
 })

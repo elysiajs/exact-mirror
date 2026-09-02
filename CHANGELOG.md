@@ -1,3 +1,7 @@
+# 0.2.8 - Unreleased
+Bug fix:
+- [elysia#1823](https://github.com/elysiajs/elysia/issues/1823) dereference recursive reference nested in an union branch
+
 # 0.2.7 - 9 Feb 2025
 Bug fix:
 - [elysia#1700](https://github.com/elysiajs/elysia/issues/1700) distinct union object
