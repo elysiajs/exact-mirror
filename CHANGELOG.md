@@ -1,3 +1,8 @@
+# 1.2.5 - Unreleased
+
+Bug fix:
+- a recursive `$ref` nested inside a union member (e.g. an object property of a union branch) is now dereferenced when compiling the branch check, instead of the value falling through unmirrored
+
 # 1.2.4 - 7 Aug 2026
 
 Bug fix:
