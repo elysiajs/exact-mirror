@@ -15,7 +15,7 @@ const StringToNumber = t
 // "accept a number OR a numeric string" — the common coercion shape
 const Numeric = t.Union([t.Number(), StringToNumber])
 
-describe('decode mode', () => {
+describe('decode', () => {
 	it('decode codec leaf inside an object (headline case)', () => {
 		const shape = t.Object({ id: Numeric })
 		const mirror = createMirror(shape, { decode: true, Compile })
@@ -100,7 +100,10 @@ describe('decode mode', () => {
 	})
 
 	it('match TypeBox Value.Decode', () => {
-		const shape = t.Object({ a: t.Object({ b: Numeric }), ids: t.Array(Numeric) })
+		const shape = t.Object({
+			a: t.Object({ b: Numeric }),
+			ids: t.Array(Numeric)
+		})
 		const mirror = createMirror(shape, { decode: true, Compile })
 
 		const value = { a: { b: '5' }, ids: ['1', '2'] }
@@ -282,12 +285,14 @@ describe('Optional + Union + Codec combination (decode)', () => {
 	it('match Value.Decode across present / absent', () => {
 		const mirror = createMirror(shape, { Compile, decode: true })
 
-		expect(mirror({ id: '2' })).toEqual(Value.Decode(shape, { id: '2' }) as any)
+		expect(mirror({ id: '2' })).toEqual(
+			Value.Decode(shape, { id: '2' }) as any
+		)
 		expect(mirror({})).toEqual(Value.Decode(shape, {}) as any)
 	})
 
-	it('does not mutate the shared union node (Bug 2) — modifiers survive', () => {
-		const union = (shape.properties.id as any)
+	it('does not mutate the shared union node, modifiers survive', () => {
+		const union = shape.properties.id as any
 		const memberBefore = union.anyOf[1]
 
 		createMirror(shape, { Compile, decode: true })
@@ -301,7 +306,7 @@ describe('Optional + Union + Codec combination (decode)', () => {
 	})
 })
 
-describe('decode mode emit', () => {
+describe('decode emit', () => {
 	it('lift codec closures into externals and round-trip', () => {
 		const shape = t.Object({ id: StringToNumber })
 
@@ -332,7 +337,10 @@ describe('decode mode emit', () => {
 		expect(externals.unions).toHaveLength(1)
 		expect(externals.codecs).toBeArrayOfSize(1)
 
-		const fn = Function('d', source)({
+		const fn = Function(
+			'd',
+			source
+		)({
 			unions: externals.unions,
 			codecs: externals.codecs
 		})
@@ -341,11 +349,7 @@ describe('decode mode emit', () => {
 	})
 })
 
-describe('decode mode — frozen union members & union refs (regression)', () => {
-	// Elysia's coercion types are Object.freeze'd singletons reused as union
-	// members. A frozen node's `anyOf`/`items` descriptor is non-writable, so
-	// the old `copySchema(node); node.anyOf = …` threw and the whole subtree
-	// silently degraded to identity (the value passed through undecoded).
+describe('decode frozen union members & union refs', () => {
 	const FrozenNumeric = Object.freeze(t.Union([t.Number(), StringToNumber]))
 
 	it('decode a frozen union node used as a union member', () => {
@@ -389,12 +393,12 @@ describe('decode mode — frozen union members & union refs (regression)', () =>
 })
 
 describe('codec union member replaces its container (decode)', () => {
-	const Container = t.Union([
-		t.Object({ s: t.Optional(t.String()) }),
-		t.Decode(t.String(), (v: string) => JSON.parse(v))
-	])
-
 	it('keep optional fields of a decoded container', () => {
+		const Container = t.Union([
+			t.Object({ s: t.Optional(t.String()) }),
+			t.Decode(t.String(), (v: string) => JSON.parse(v))
+		])
+
 		const shape = t.Object({ m: Container })
 		const mirror = createMirror(shape, { decode: true, Compile })
 
@@ -407,6 +411,11 @@ describe('codec union member replaces its container (decode)', () => {
 	})
 
 	it('clean below a union key against the output, never the encoded input', () => {
+		const Container = t.Union([
+			t.Object({ s: t.Optional(t.String()) }),
+			t.Decode(t.String(), (v: string) => JSON.parse(v))
+		])
+
 		const shape = t.Object({ m: Container })
 		const source = createMirror(shape, { decode: true, Compile }).toString()
 
@@ -414,6 +423,11 @@ describe('codec union member replaces its container (decode)', () => {
 	})
 
 	it('keep optional fields of a decoded root container', () => {
+		const Container = t.Union([
+			t.Object({ s: t.Optional(t.String()) }),
+			t.Decode(t.String(), (v: string) => JSON.parse(v))
+		])
+
 		const mirror = createMirror(Container, { decode: true, Compile })
 
 		expect(mirror('{"s":"keep"}' as any)).toEqual({ s: 'keep' })
@@ -454,6 +468,10 @@ describe('codec union member replaces its container (decode)', () => {
 	})
 
 	it('keep nested optional fields of a decoded container', () => {
+		const Container = t.Union([
+			t.Object({ s: t.Optional(t.String()) }),
+			t.Decode(t.String(), (v: string) => JSON.parse(v))
+		])
 		const shape = t.Object({
 			m: t.Union([
 				t.Object({ inner: t.Object({ s: t.Optional(t.String()) }) }),
@@ -468,5 +486,101 @@ describe('codec union member replaces its container (decode)', () => {
 		expect(mirror({ m: '{"inner":{}}' } as any)).toEqual({
 			m: { inner: {} }
 		})
+	})
+
+	it('build a union member with a non-identifier optional key', () => {
+		const Container = t.Union([
+			t.Object({ s: t.Optional(t.String()) }),
+			t.Decode(t.String(), (v: string) => JSON.parse(v))
+		])
+		const shape = t.Object({
+			m: t.Union([
+				t.Object({ 'a-b': t.Optional(t.String()), ok: t.String() }),
+				t.Number()
+			])
+		})
+		const mirror = createMirror(shape, { Compile })
+
+		expect(mirror({ m: { ok: 'x' } })).toEqual({ m: { ok: 'x' } })
+		expect(mirror({ m: { 'a-b': 'y', ok: 'x' } })).toEqual({
+			m: { 'a-b': 'y', ok: 'x' }
+		})
+	})
+
+	it('build an array element with a non-identifier optional key', () => {
+		const Container = t.Union([
+			t.Object({ s: t.Optional(t.String()) }),
+			t.Decode(t.String(), (v: string) => JSON.parse(v))
+		])
+		const shape = t.Object({
+			l: t.Optional(t.Array(t.Object({ 'a-b': t.Optional(t.String()) })))
+		})
+		const mirror = createMirror(shape)
+
+		expect(mirror({ l: [{}, { 'a-b': 'y' }] })).toEqual({
+			l: [{}, { 'a-b': 'y' }]
+		})
+	})
+
+	it('return a decoded value its sibling does not match', () => {
+		const Container = t.Union([
+			t.Object({ s: t.Optional(t.String()) }),
+			t.Decode(t.String(), (v: string) => JSON.parse(v))
+		])
+		const mirror = createMirror(t.Object({ m: Container }), {
+			decode: true,
+			Compile
+		})
+
+		expect(mirror({ m: '[1,2]' } as any)).toEqual({ m: [1, 2] } as any)
+		expect(mirror({ m: '42' } as any)).toEqual({ m: 42 } as any)
+		expect(mirror({ m: '{"s":"keep"}' } as any)).toEqual({
+			m: { s: 'keep' }
+		})
+	})
+
+	it('keep sanitizing inside a container-shaped codec', () => {
+		const shape = t.Object({
+			m: t.Decode(t.Object({ s: t.String() }), (v: { s: string }) => v)
+		})
+		const mirror = createMirror(shape, {
+			decode: true,
+			sanitize: (v) => v.trim()
+		})
+
+		expect(mirror({ m: { s: ' x ' } })).toEqual({ m: { s: 'x' } })
+	})
+
+	it('sanitize a decoded string and skip a decoded non-string', () => {
+		const shape = t.Object({
+			a: t.Decode(t.String(), (v: string) => v.toUpperCase()),
+			n: Numeric
+		})
+		const mirror = createMirror(shape, {
+			decode: true,
+			Compile,
+			sanitize: (v) => v.trim()
+		})
+
+		expect(mirror({ a: ' x ', n: '2' } as any)).toEqual({ a: 'X', n: 2 })
+	})
+
+	it('re-enter a union only when a sibling can clean a container', () => {
+		const Container = t.Union([
+			t.Object({ s: t.Optional(t.String()) }),
+			t.Decode(t.String(), (v: string) => JSON.parse(v))
+		])
+
+		const scalar = createMirror(t.Object({ n: Numeric }), {
+			decode: true,
+			Compile
+		}).toString()
+		const container = createMirror(t.Object({ m: Container }), {
+			decode: true,
+			Compile
+		}).toString()
+
+		expect(scalar).not.toContain('return u0(')
+		expect(container).toContain('return u0(')
 	})
 })

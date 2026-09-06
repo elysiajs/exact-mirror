@@ -486,12 +486,25 @@ const handleUnion = (
 	// e.g. object with `additionalProperties: false`
 	let cleanThenCheck = ''
 
+	// scalar codecs (Numeric, Date) have nothing to re-enter for
+	const reenter =
+		instruction.transform !== undefined &&
+		types.some(
+			(type) =>
+				!(Codec in type) &&
+				(type.type === 'object' ||
+					type.type === 'array' ||
+					Array.isArray(type.anyOf))
+		)
+
 	for (let i = 0; i < types.length; i++) {
 		const check = `d.unions[${ui}][${i}].Check`
 
 		if (instruction.transform && Codec in types[i]) {
-			v += `if(!r&&${check}(${p}))return u${ui}(${member(types[i])},1)\n`
-			cleanThenCheck += `if(!r){tmp=${member(types[i])}\nif(${check}(tmp))return tmp}\n`
+			v += reenter
+				? `if(!r&&${check}(${p}))return u${ui}(${member(types[i])},1)\n`
+				: `if(${check}(${p}))return ${member(types[i])}\n`
+			cleanThenCheck += `tmp=${member(types[i])}\nif(${check}(tmp))return tmp\n`
 
 			continue
 		}
@@ -507,7 +520,9 @@ const handleUnion = (
 			`if(${check}(tmp))return tmp\n`
 	}
 
-	if (cleanThenCheck) v += `let tmp\n` + cleanThenCheck
+	// cleaning builds a member-shaped value, which would fabricate one from a
+	// decoded value the member does not match, so it never runs on re-entry
+	if (cleanThenCheck) v += `let tmp\nif(!r){\n` + cleanThenCheck + `}\n`
 
 	v += `return ${instruction.removeUnknownUnionType ? `r?${p}:undefined` : p}`
 
@@ -532,11 +547,20 @@ const mirror = (
 			if (ci === -1) ci = instruction.codecs.push(codec) - 1
 
 			const transformed = `d.codecs[${ci}](${property})`
-			// the decoded value is no longer the encoded (string) type
-			const body = mirrorNode(schema, transformed, {
-				...instruction,
-				sanitize: undefined
-			})
+
+			let body: string
+			if (schema.type === 'string') {
+				// decoded value may no longer be a string (number, Date, object)
+				const wrapped = sanitize(
+					's',
+					instruction.sanitize?.length,
+					schema
+				)
+				body =
+					wrapped === 's'
+						? transformed
+						: `((s)=>typeof s==='string'?${wrapped}:s)(${transformed})`
+			} else body = mirrorNode(schema, transformed, instruction)
 
 			return isRoot ? `return ${body}` : body
 		}
@@ -645,9 +669,12 @@ const mirrorNode = (
 
 					if (property.startsWith('ar')) {
 						const dotIndex = name.indexOf('.')
-						const refName = name.slice(
+						let refName = name.slice(
 							dotIndex >= 0 ? dotIndex : property.length
 						)
+						// `?.["k"]` keeps its dot, `target.["k"]` is not valid
+						if (refName.charCodeAt(1) === 91)
+							refName = refName.slice(1)
 
 						const array = instruction.optionalsInArray
 

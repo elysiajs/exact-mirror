@@ -1,3 +1,11 @@
+# 1.2.6 - 7 Sep 2026
+
+Bug fix:
+- encode an union member (or array element)
+- a decoded value that no sibling matches (e.g. a JSON array next to an object member) is returned as-is
+- `sanitize` still applies inside a container-shaped codec
+- scalar codecs (`Numeric`, `Date`) no longer re-enter their union on decode
+
 # 1.2.5 - 7 Sep 2026
 
 Bug fix:
