@@ -387,3 +387,86 @@ describe('decode mode — frozen union members & union refs (regression)', () =>
 		expect(Object.isFrozen(FrozenNumeric)).toBe(true)
 	})
 })
+
+describe('codec union member replaces its container (decode)', () => {
+	const Container = t.Union([
+		t.Object({ s: t.Optional(t.String()) }),
+		t.Decode(t.String(), (v: string) => JSON.parse(v))
+	])
+
+	it('keep optional fields of a decoded container', () => {
+		const shape = t.Object({ m: Container })
+		const mirror = createMirror(shape, { decode: true, Compile })
+
+		expect(mirror({ m: '{"s":"keep"}' } as any)).toEqual({
+			m: { s: 'keep' }
+		})
+		expect(mirror({ m: '{}' } as any)).toEqual({ m: {} })
+		expect(mirror({ m: { s: 'plain' } })).toEqual({ m: { s: 'plain' } })
+		expect(mirror({ m: {} })).toEqual({ m: {} })
+	})
+
+	it('clean below a union key against the output, never the encoded input', () => {
+		const shape = t.Object({ m: Container })
+		const source = createMirror(shape, { decode: true, Compile }).toString()
+
+		expect(source).not.toContain('if(v.m?.s===undefined)delete')
+	})
+
+	it('keep optional fields of a decoded root container', () => {
+		const mirror = createMirror(Container, { decode: true, Compile })
+
+		expect(mirror('{"s":"keep"}' as any)).toEqual({ s: 'keep' })
+		expect(mirror({} as any)).toEqual({})
+	})
+
+	it('clean and sanitize a decoded container through its sibling member', () => {
+		const shape = t.Object({
+			m: t.Union([
+				t.Object({ n: Numeric, s: t.Optional(t.String()) }),
+				t.Decode(t.String(), (v: string) => JSON.parse(v))
+			])
+		})
+		const mirror = createMirror(shape, {
+			decode: true,
+			Compile,
+			sanitize: (v) => v.trim()
+		})
+
+		expect(
+			mirror({ m: '{"n":"42","s":" keep ","extra":"drop"}' } as any)
+		).toEqual({ m: { n: 42, s: 'keep' } })
+		expect(mirror({ m: '{"n":"42"}' } as any)).toEqual({ m: { n: 42 } })
+		expect(
+			mirror({ m: { n: '42', s: ' keep ', extra: 'drop' } } as any)
+		).toEqual({ m: { n: 42, s: 'keep' } })
+	})
+
+	it('not sanitize a decoded non-string codec value', () => {
+		const shape = t.Object({ id: Numeric })
+		const mirror = createMirror(shape, {
+			decode: true,
+			Compile,
+			sanitize: (v) => v.trim()
+		})
+
+		expect(mirror({ id: '2' })).toEqual({ id: 2 })
+	})
+
+	it('keep nested optional fields of a decoded container', () => {
+		const shape = t.Object({
+			m: t.Union([
+				t.Object({ inner: t.Object({ s: t.Optional(t.String()) }) }),
+				t.Decode(t.String(), (v: string) => JSON.parse(v))
+			])
+		})
+		const mirror = createMirror(shape, { decode: true, Compile })
+
+		expect(mirror({ m: '{"inner":{"s":"keep"}}' } as any)).toEqual({
+			m: { inner: { s: 'keep' } }
+		})
+		expect(mirror({ m: '{"inner":{}}' } as any)).toEqual({
+			m: { inner: {} }
+		})
+	})
+})

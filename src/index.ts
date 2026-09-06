@@ -358,7 +358,7 @@ const handleCyclic = (
 
 // a type referencing cyclic definitions can only be checked with its
 // `$defs` context, rewrap it as a cyclic schema before compilation
-const withDefs = (type: AnySchema, group: CyclicGroup): AnySchema => {
+function withDefs(type: AnySchema, group: CyclicGroup) {
 	if (Kind in type) {
 		// a cyclic schema carries its own $defs
 		if (type[Kind] === 'Cyclic') return type
@@ -415,8 +415,6 @@ const handleUnion = (
 	const ui = instruction.unions.length
 	const typeChecks = (instruction.unions[ui] = <Validator<any>[]>[])
 
-	let v = `(()=>{\n`
-
 	const unwrapRef = (type: AnySchema): AnySchema => {
 		if (!(Kind in type) || !type.$ref) return type
 
@@ -433,16 +431,10 @@ const handleUnion = (
 		return type
 	}
 
-	// some type require cleaning before checking
-	// e.g. object with `additionalProperties: false`
-	let cleanThenCheck = ''
-
+	const types: AnySchema[] = []
 	for (let i = 0; i < schemas.length; i++) {
 		let type = unwrapRef(schemas[i])
 
-		// Resolve nested refs without mutating the caller's schema node
-		// A union member can be a frozen singleton (e.g. Elysia's coercion
-		// types), so the copy must force the rewritten member writable.
 		if (Array.isArray(type.anyOf))
 			type = copySchemaWith(type, { anyOf: type.anyOf.map(unwrapRef) })
 		else if (type.items) {
@@ -460,37 +452,66 @@ const handleUnion = (
 					: type
 			)
 		)
-		v += `if(d.unions[${ui}][${i}].Check(${property})){return ${mirror(
-			type,
-			property,
-			{
-				...instruction,
-				recursion: instruction.recursion + 1,
-				parentIsOptional: true,
-				fromUnion: true
-			}
-		)}}\n`
-
-		cleanThenCheck +=
-			(i ? '' : 'let ') +
-			'tmp=' +
-			mirror(type, property, {
-				...instruction,
-				recursion: instruction.recursion + 1,
-				parentIsOptional: true,
-				fromUnion: true
-			}) +
-			`\nif(d.unions[${ui}][${i}].Check(tmp))return tmp\n`
+		types.push(type)
 	}
 
-	if (cleanThenCheck) v += cleanThenCheck
+	const a = instruction.array
+	instruction.array++
+	const p = `ar${a}p`
 
-	// unknown type, return as-is (this is a default intended behavior)
-	// because it's expected that exact-mirror input should always be a correct value
-	// returning an incorrect value then later checked is expected
-	v += `return ${instruction.removeUnknownUnionType ? 'undefined' : property}`
+	const member = (type: AnySchema) =>
+		mirror(type, p, {
+			...instruction,
+			recursion: instruction.recursion + 1,
+			parentIsOptional: true,
+			fromUnion: true
+		})
 
-	return v + `})()`
+	const deletes = (target: string) => {
+		const optionals = instruction.optionalsInArray[a + 1]
+		if (!optionals) return ''
+
+		let v = ''
+		for (let oi = 0; oi < optionals.length; oi++)
+			v += `if(${target}${optionals[oi]}===undefined)delete ${target}${optionals[oi]}\n`
+
+		instruction.optionalsInArray[a + 1] = []
+
+		return v
+	}
+
+	let v = `(function u${ui}(${p},r){\n`
+
+	// some type require cleaning before checking
+	// e.g. object with `additionalProperties: false`
+	let cleanThenCheck = ''
+
+	for (let i = 0; i < types.length; i++) {
+		const check = `d.unions[${ui}][${i}].Check`
+
+		if (instruction.transform && Codec in types[i]) {
+			v += `if(!r&&${check}(${p}))return u${ui}(${member(types[i])},1)\n`
+			cleanThenCheck += `if(!r){tmp=${member(types[i])}\nif(${check}(tmp))return tmp}\n`
+
+			continue
+		}
+
+		v +=
+			`if(${check}(${p})){const ar${a}v=${member(types[i])}\n` +
+			deletes(`ar${a}v`) +
+			`return ar${a}v}\n`
+
+		cleanThenCheck +=
+			`tmp=${member(types[i])}\n` +
+			deletes('tmp') +
+			`if(${check}(tmp))return tmp\n`
+	}
+
+	if (cleanThenCheck) v += `let tmp\n` + cleanThenCheck
+
+	v += `return ${instruction.removeUnknownUnionType ? `r?${p}:undefined` : p}`
+
+	return v + `})(${property})`
 }
 
 const mirror = (
@@ -511,7 +532,11 @@ const mirror = (
 			if (ci === -1) ci = instruction.codecs.push(codec) - 1
 
 			const transformed = `d.codecs[${ci}](${property})`
-			const body = mirrorNode(schema, transformed, instruction)
+			// the decoded value is no longer the encoded (string) type
+			const body = mirrorNode(schema, transformed, {
+				...instruction,
+				sanitize: undefined
+			})
 
 			return isRoot ? `return ${body}` : body
 		}
