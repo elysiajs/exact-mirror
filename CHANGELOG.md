@@ -4,6 +4,11 @@ Bug fix:
 - `decode` stop dropping optional fields of a container produced by a codec
 - `sanitize` now not applied to a codec decoded value
 
+# 1.2.4 - 7 Aug 2026
+
+Bug fix:
+- codec missing field is sometime lossy
+
 # 1.2.3 - 6 Aug 2026
 
 Security fix:

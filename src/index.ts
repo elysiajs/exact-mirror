@@ -645,21 +645,14 @@ const mirrorNode = (
 
 					if (property.startsWith('ar')) {
 						const dotIndex = name.indexOf('.')
-						let refName
-						if (dotIndex >= 0) {
-							// Has a dot, extract from the dot onwards
-							refName = name.slice(dotIndex)
-						} else {
-							// No dot, must be bracket notation
-							refName = name.slice(property.length)
-						}
+						const refName = name.slice(
+							dotIndex >= 0 ? dotIndex : property.length
+						)
+
 						const array = instruction.optionalsInArray
 
-						if (array[index]) {
-							array[index].push(refName)
-						} else {
-							array[index] = [refName]
-						}
+						if (array[index]) array[index].push(refName)
+						else array[index] = [refName]
 					} else {
 						instruction.optionals.push(name)
 					}
@@ -812,14 +805,17 @@ const mirrorNode = (
 		const key = instruction.optionals[i]
 		const prop = key.slice(1)
 
+		// 63 is '?'
+		const shouldQuestion =
+			prop.charCodeAt(0) !== 63 && schema.type !== 'array'
+
+		const target = `x${shouldQuestion ? (prop.charCodeAt(0) === 91 ? '?.' : '?') : ''}${prop}`
+
 		v += `if(${key}===undefined`
 
 		if (instruction.unionKeys[key]) v += `||x${prop}===undefined`
 
-		// 63 is '?'
-		const shouldQuestion =
-			prop.charCodeAt(0) !== 63 && schema.type !== 'array'
-		v += `)delete x${shouldQuestion ? (prop.charCodeAt(0) === 91 ? '?.' : '?') : ''}${prop}\n`
+		v += `)delete ${target}\n`
 	}
 
 	return `${v}return x`
