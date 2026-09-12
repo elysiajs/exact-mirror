@@ -470,11 +470,17 @@ const mirror = (
 
 			let reference = property
 
-			if (isRoot) v = `const ar${i}v=new Array(${property}.length);`
+			// the value may not be an array, e.g. a union branch mirrored by
+			// `cleanThenCheck` against a value belonging to another branch
+			if (isRoot)
+				v =
+					`if(!Array.isArray(${property}))return ${property};` +
+					`const ar${i}v=new Array(${property}.length);`
 			else {
 				reference = `ar${i}s`
 				v =
 					`((${reference})=>{` +
+					`if(!Array.isArray(${reference}))return ${reference};` +
 					`const ar${i}v=new Array(${reference}.length);`
 			}
 

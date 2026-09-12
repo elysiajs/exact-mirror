@@ -1,3 +1,7 @@
+# 0.2.8 - Unreleased
+Bug fix:
+- return a non-array value as-is instead of dereferencing `.length`, e.g. an array in a union branch cleaned against a value of another branch
+
 # 0.2.7 - 9 Feb 2025
 Bug fix:
 - [elysia#1700](https://github.com/elysiajs/elysia/issues/1700) distinct union object
