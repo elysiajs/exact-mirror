@@ -1,3 +1,8 @@
+# 1.2.7 - 4 Nov 2026
+
+Improvement:
+- build an object without its absent optional keys instead of deleting them, so it stays out of V8 dictionary mode
+
 # 1.2.6 - 7 Sep 2026
 
 Bug fix:

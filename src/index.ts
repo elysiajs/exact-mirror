@@ -177,6 +177,18 @@ export interface Instruction<Emit extends boolean = false> {
 	 * against, used to resolve `Ref` nodes to function calls
 	 */
 	cyclicDefs?: CyclicGroup
+	/**
+	 * Statements that run before the expression being generated, where an
+	 * object with optional keys is built key by key: deleting a key of an
+	 * object literal puts the object in V8 dictionary mode
+	 *
+	 * `undefined` where no statement can be placed
+	 */
+	hoist?: string[]
+	/**
+	 * Shared counter naming the variables of `hoist`
+	 */
+	vars: { count: number }
 	recursion: number
 	/**
 	 * @default 8
@@ -207,13 +219,20 @@ const handleRecord = (
 	const i = instruction.array
 	instruction.array++
 
+	const hoist = instruction.hoist
+	instruction.hoist = []
+	const value = mirror(child as AnySchema, `ar${i}p`, instruction)
+
 	let v =
 		`(()=>{` +
 		`const ar${i}s=Object.keys(${property}),` +
 		`ar${i}v=Object.create(null);` +
 		`for(let i=0;i<ar${i}s.length;i++){` +
 		`const ar${i}p=${property}[ar${i}s[i]];` +
-		`ar${i}v[ar${i}s[i]]=${mirror(child as AnySchema, `ar${i}p`, instruction)}`
+		instruction.hoist.join('') +
+		`ar${i}v[ar${i}s[i]]=${value}`
+
+	instruction.hoist = hoist
 
 	const optionals = instruction.optionalsInArray[i + 1]
 	if (optionals) {
@@ -246,6 +265,10 @@ const handleTuple = (
 
 	v += `const ar${i}v=[`
 
+	// elements keep their own cleanup
+	const hoist = instruction.hoist
+	instruction.hoist = undefined
+
 	for (let i = 0; i < schema.length; i++) {
 		if (i !== 0) v += ','
 
@@ -259,6 +282,8 @@ const handleTuple = (
 			instruction
 		)
 	}
+
+	instruction.hoist = hoist
 
 	v += `];`
 
@@ -339,6 +364,7 @@ const handleCyclic = (
 					optionals: [],
 					optionalsInArray: [],
 					unionKeys: {},
+					hoist: [],
 					array: 0,
 					recursion: 0
 				})}}`
@@ -459,12 +485,13 @@ const handleUnion = (
 	instruction.array++
 	const p = `ar${a}p`
 
-	const member = (type: AnySchema) =>
+	const member = (type: AnySchema, hoist?: string[]) =>
 		mirror(type, p, {
 			...instruction,
 			recursion: instruction.recursion + 1,
 			parentIsOptional: true,
-			fromUnion: true
+			fromUnion: true,
+			hoist
 		})
 
 	const deletes = (target: string) => {
@@ -509,13 +536,19 @@ const handleUnion = (
 			continue
 		}
 
+		const hoist: string[] = []
+		const value = member(types[i], hoist)
+
 		v +=
-			`if(${check}(${p})){const ar${a}v=${member(types[i])}\n` +
+			`if(${check}(${p})){${hoist.join('')}const ar${a}v=${value}\n` +
 			deletes(`ar${a}v`) +
 			`return ar${a}v}\n`
 
+		const cleanHoist: string[] = []
+		const cleaned = member(types[i], cleanHoist)
+
 		cleanThenCheck +=
-			`tmp=${member(types[i])}\n` +
+			`${cleanHoist.join('')}tmp=${cleaned}\n` +
 			deletes('tmp') +
 			`if(${check}(tmp))return tmp\n`
 	}
@@ -538,6 +571,8 @@ const mirror = (
 
 	const isRoot = property === 'v' && !instruction.fromUnion
 	const optionalsLength = instruction.optionals.length
+	const hoist = instruction.hoist
+	const hoistLength = hoist?.length
 
 	try {
 		if (instruction.transform && Codec in schema) {
@@ -560,7 +595,12 @@ const mirror = (
 					wrapped === 's'
 						? transformed
 						: `((s)=>typeof s==='string'?${wrapped}:s)(${transformed})`
-			} else body = mirrorNode(schema, transformed, instruction)
+			} else {
+				// every path below re-runs the codec, keep its own cleanup
+				instruction.hoist = undefined
+				body = mirrorNode(schema, transformed, instruction)
+				instruction.hoist = hoist
+			}
 
 			return isRoot ? `return ${body}` : body
 		}
@@ -575,6 +615,8 @@ const mirror = (
 	} catch (error) {
 		// degrade only this subtree to identity instead of failing the whole mirror
 		instruction.optionals.length = optionalsLength
+		instruction.hoist = hoist
+		if (hoist) hoist.length = hoistLength!
 
 		console.warn(
 			new Error(
@@ -642,20 +684,128 @@ const mirrorNode = (
 				break
 			}
 
-			v += '{'
-
-			if (schema.additionalProperties) v += `...${property},`
-
 			const keys = Object.keys(schema.properties!)
-			for (let i = 0; i < keys.length; i++) {
-				const key = keys[i]
-
-				let isOptional =
+			const optional = keys.map(
+				(key) =>
 					// all fields are optional
 					!schema.required ||
 					// field is explicitly required
 					(schema.required && !schema.required.includes(key)) ||
 					Array.isArray(schema.properties![key].anyOf)
+			)
+
+			if (instruction.hoist && !schema.additionalProperties) {
+				const names: string[] = []
+				const values: string[] = []
+				const hoists: string[] = []
+
+				for (let i = 0; i < keys.length; i++) {
+					const name = joinProperty(
+						property,
+						keys[i],
+						instruction.parentIsOptional || instruction.fromUnion
+					)
+					const hoist: string[] = []
+
+					values.push(
+						mirror(schema.properties![keys[i]], name, {
+							...instruction,
+							recursion: instruction.recursion + 1,
+							parentIsOptional: optional[i],
+							hoist
+						})
+					)
+
+					names.push(name)
+					hoists.push(hoist.join(''))
+				}
+
+				if (!optional.includes(true) && !hoists.join('')) {
+					v = `{${keys.map((key, i) => `${encodeProperty(key)}:${values[i]}`).join(',')}}`
+					break
+				}
+
+				const o = `o${instruction.vars.count++}`
+
+				let statements = '',
+					literal = '{',
+					present = '',
+					assign = `${o}={};`
+
+				const defineAll = keys.includes('__proto__')
+
+				for (let i = 0; i < keys.length; i++) {
+					const key = keys[i]
+					const name = names[i]
+					const value = values[i]
+					const t = `${o}_${i}`
+
+					let has = `${t}!==undefined`
+
+					if (value === name) statements += `var ${t}=${name};`
+					else if (!optional[i])
+						statements += `${hoists[i]}var ${t}=${value};`
+					else if (
+						!hoists[i] &&
+						(property.startsWith('ar') ||
+							instruction.unionKeys[name])
+					)
+						statements += `var ${t}=${name}===undefined?undefined:${value};`
+					else {
+						const input = `${o}$${i}`
+
+						statements +=
+							`var ${input}=${name};` +
+							(hoists[i]
+								? `if(${input}!==undefined){${hoists[i]}}`
+								: '') +
+							`var ${t}=${input}===undefined?undefined:${value};`
+
+						if (
+							!property.startsWith('ar') &&
+							!instruction.unionKeys[name]
+						)
+							has = `${input}!==undefined`
+					}
+
+					if (i !== 0) literal += ','
+					literal += `${encodeProperty(key)}:${t}`
+
+					const set =
+						key !== '__proto__' &&
+						(defineAll || key in Object.prototype)
+							? `Object.defineProperty(${o},${JSON.stringify(key)},{value:${t},writable:true,enumerable:true,configurable:true});`
+							: isSpecialProperty(key)
+								? `${o}[${JSON.stringify(key)}]=${t};`
+								: `${o}.${key}=${t};`
+
+					if (!optional[i]) {
+						assign += set
+						continue
+					}
+
+					present += (present ? '&&' : '') + has
+					assign += `if(${has})${set}`
+				}
+
+				// with every key present, a literal keeps exact in-object slots
+				instruction.hoist.push(
+					present
+						? `${statements}var ${o};if(${present})${o}=${literal}};else{${assign}}`
+						: `${statements}var ${o}=${literal}};`
+				)
+
+				v = o
+				break
+			}
+
+			v += '{'
+
+			if (schema.additionalProperties) v += `...${property},`
+
+			for (let i = 0; i < keys.length; i++) {
+				const key = keys[i]
+				const isOptional = optional[i]
 
 				const name = joinProperty(
 					property,
@@ -695,7 +845,8 @@ const mirrorNode = (
 					{
 						...instruction,
 						recursion: instruction.recursion + 1,
-						parentIsOptional: isOptional
+						parentIsOptional: isOptional,
+						hoist: undefined
 					}
 				)}`
 			}
@@ -736,8 +887,6 @@ const mirrorNode = (
 					v = handleTuple(schema.items, property, instruction)
 					break
 				} else if (!cyclicItems && !codecItems) {
-					// cyclic ref items continue to the loop below,
-					// mirroring to a per-item function call
 					if (isRoot && !Array.isArray(schema.items!.anyOf))
 						return 'return v'
 					else if (
@@ -754,7 +903,8 @@ const mirrorNode = (
 							{
 								...instruction,
 								parentIsOptional: true,
-								recursion: instruction.recursion + 1
+								recursion: instruction.recursion + 1,
+								hoist: undefined
 							}
 						)
 					else if (!Array.isArray(schema.items!.anyOf)) {
@@ -777,10 +927,21 @@ const mirrorNode = (
 					`const ar${i}v=new Array(${reference}.length);`
 			}
 
+			const hoist = instruction.hoist
+			instruction.hoist = []
+			const item = mirror(
+				schema.items as AnySchema,
+				`ar${i}p`,
+				instruction
+			)
+
 			v +=
 				`for(let i=0;i<${reference}.length;i++){` +
 				`const ar${i}p=${reference}[i];` +
-				`ar${i}v[i]=${mirror(schema.items as AnySchema, `ar${i}p`, instruction)}`
+				instruction.hoist.join('') +
+				`ar${i}v[i]=${item}`
+
+			instruction.hoist = hoist
 
 			const optionals = instruction.optionalsInArray[i + 1]
 			if (optionals) {
@@ -790,6 +951,7 @@ const mirrorNode = (
 
 					v += `;if(${target}===undefined)delete ${target}`
 				}
+
 				// Clear the optionals array after use to prevent pollution across sibling arrays
 				instruction.optionalsInArray[i + 1] = []
 			}
@@ -821,12 +983,13 @@ const mirrorNode = (
 
 	if (!isRoot) return v
 
-	if (schema.type === 'array') {
+	const hoist = instruction.hoist?.join('') ?? ''
+
+	if (schema.type === 'array')
 		// actually Tuple
-		v = `${v}const x=ar0v;`
-	} else {
-		v = `const x=${v}\n`
-	}
+		v = `${hoist}${v}const x=ar0v;`
+	else
+		v = `${hoist}const x=${v}\n`
 
 	for (let i = 0; i < instruction.optionals.length; i++) {
 		const key = instruction.optionals[i]
@@ -916,6 +1079,8 @@ export const createMirror = <T extends TSchema, Emit extends boolean = false>(
 		// @ts-ignore private property
 		definitions: definitions ?? modules?.$defs ?? Object.create(null),
 		cyclic,
+		hoist: [],
+		vars: { count: 0 },
 		sanitize,
 		recursion: 0,
 		recursionLimit,
