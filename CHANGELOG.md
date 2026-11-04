@@ -1,6 +1,9 @@
-# 0.2.8 - 4 Nov 2026
+# 0.2.9 - 4 Nov 2026
 Security:
 - escape schema property names before inserting them into generated mirror code
+
+# 0.2.8 - 4 Nov 2026
+Release superseded after npm publication failed.
 
 # 0.2.7 - 9 Feb 2025
 Bug fix:

@@ -45,4 +45,4 @@ jobs:
 
       - name: 'Publish'
         run: |
-          NODE_AUTH_TOKEN="" npm publish --provenance --access=public
+          NODE_AUTH_TOKEN="" npm publish --provenance --access=public --tag legacy-0.2
