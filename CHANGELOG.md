@@ -1,3 +1,7 @@
+# 0.2.8 - 4 Nov 2026
+Security:
+- escape schema property names before inserting them into generated mirror code
+
 # 0.2.7 - 9 Feb 2025
 Bug fix:
 - [elysia#1700](https://github.com/elysiajs/elysia/issues/1700) distinct union object
