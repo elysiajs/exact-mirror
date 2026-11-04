@@ -94,8 +94,13 @@ const encodeProperty = (v: string) =>
 	isSpecialProperty(v) ? JSON.stringify(v) : v
 
 const sanitize = (key: string, sanitize = 0, schema: AnySchema) => {
-	// @ts-expect-error
-	if (schema.type !== 'string' || schema.const || schema.trusted) return key
+	if (
+		schema.type !== 'string' ||
+		schema.const !== undefined ||
+		// @ts-expect-error
+		schema.trusted
+	)
+		return key
 
 	let hof = ''
 	for (let i = sanitize - 1; i >= 0; i--) hof += `d.h${i}(`
@@ -862,6 +867,14 @@ const mirrorNode = (
 				break
 			}
 
+			// a string as items must be sanitized per element, a reference may
+			// resolve to one. Anything else that isn't an array stays as is, as
+			// the identity shortcuts below leave it
+			const sanitizedItems =
+				!Array.isArray(schema.items) &&
+				!!instruction.sanitize?.length &&
+				(!!schema.items!.$ref || sanitize('', 1, schema.items!) !== '')
+
 			if (
 				// @ts-expect-error
 				schema.items.type !== 'object' &&
@@ -886,7 +899,7 @@ const mirrorNode = (
 				if (Array.isArray(schema.items)) {
 					v = handleTuple(schema.items, property, instruction)
 					break
-				} else if (!cyclicItems && !codecItems) {
+				} else if (!cyclicItems && !codecItems && !sanitizedItems) {
 					if (isRoot && !Array.isArray(schema.items!.anyOf))
 						return 'return v'
 					else if (
@@ -919,13 +932,18 @@ const mirrorNode = (
 
 			let reference = property
 
-			if (isRoot) v = `const ar${i}v=new Array(${property}.length);`
-			else {
-				reference = `ar${i}s`
+			if (!isRoot) reference = `ar${i}s`
+
+			const guard = sanitizedItems
+				? `if(!Array.isArray(${reference}))return ${reference};`
+				: ''
+
+			if (isRoot)
+				v = `${guard}const ar${i}v=new Array(${property}.length);`
+			else
 				v =
-					`((${reference})=>{` +
+					`((${reference})=>{${guard}` +
 					`const ar${i}v=new Array(${reference}.length);`
-			}
 
 			const hoist = instruction.hoist
 			instruction.hoist = []

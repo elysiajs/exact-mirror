@@ -3,6 +3,9 @@
 Improvement:
 - build an object without its absent optional keys instead of deleting them, so it stays out of V8 dictionary mode
 
+Bug fix:
+- `sanitize` skipped the items of an array of strings
+
 # 1.2.6 - 7 Sep 2026
 
 Bug fix:
