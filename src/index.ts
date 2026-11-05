@@ -499,15 +499,21 @@ const handleUnion = (
 			hoist
 		})
 
-	const deletes = (target: string) => {
+	// the optionals a member's mirror recorded, taken once it is built, so
+	// the same mirror deletes them from each value it builds
+	const takeOptionals = () => {
 		const optionals = instruction.optionalsInArray[a + 1]
-		if (!optionals) return ''
+		if (!optionals) return []
 
+		instruction.optionalsInArray[a + 1] = []
+
+		return optionals
+	}
+
+	const deletes = (target: string, optionals: string[]) => {
 		let v = ''
 		for (let oi = 0; oi < optionals.length; oi++)
 			v += `if(${target}${optionals[oi]}===undefined)delete ${target}${optionals[oi]}\n`
-
-		instruction.optionalsInArray[a + 1] = []
 
 		return v
 	}
@@ -532,29 +538,33 @@ const handleUnion = (
 	for (let i = 0; i < types.length; i++) {
 		const check = `d.unions[${ui}][${i}].Check`
 
+		// each member is mirrored once and the mirror used in both branches:
+		// mirrored for each, a union nested in a union was mirrored four
+		// times, doubling at every level unions nest
 		if (instruction.transform && Codec in types[i]) {
+			const value = member(types[i])
+
 			v += reenter
-				? `if(!r&&${check}(${p}))return u${ui}(${member(types[i])},1)\n`
-				: `if(${check}(${p}))return ${member(types[i])}\n`
-			cleanThenCheck += `tmp=${member(types[i])}\nif(${check}(tmp))return tmp\n`
+				? `if(!r&&${check}(${p}))return u${ui}(${value},1)\n`
+				: `if(${check}(${p}))return ${value}\n`
+			cleanThenCheck += `tmp=${value}\nif(${check}(tmp))return tmp\n`
 
 			continue
 		}
 
 		const hoist: string[] = []
 		const value = member(types[i], hoist)
+		const hoisted = hoist.join('')
+		const optionals = takeOptionals()
 
 		v +=
-			`if(${check}(${p})){${hoist.join('')}const ar${a}v=${value}\n` +
-			deletes(`ar${a}v`) +
+			`if(${check}(${p})){${hoisted}const ar${a}v=${value}\n` +
+			deletes(`ar${a}v`, optionals) +
 			`return ar${a}v}\n`
 
-		const cleanHoist: string[] = []
-		const cleaned = member(types[i], cleanHoist)
-
 		cleanThenCheck +=
-			`${cleanHoist.join('')}tmp=${cleaned}\n` +
-			deletes('tmp') +
+			`${hoisted}tmp=${value}\n` +
+			deletes('tmp', optionals) +
 			`if(${check}(tmp))return tmp\n`
 	}
 
