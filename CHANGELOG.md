@@ -1,3 +1,8 @@
+# 1.2.8 - 23 Nov 2026
+
+Improvement:
+- array check before new array creation
+
 # 1.2.7 - 4 Nov 2026
 
 Improvement:
