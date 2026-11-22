@@ -87,3 +87,50 @@ describe('Record', () => {
 		expect(({} as any).constructor.name).toBe('Object')
 	})
 })
+
+describe('Record on a value nothing checked', () => {
+	const item = t.Object({ x: t.Optional(t.Number()) })
+
+	// a string has one key per character: the copy would cost per character
+	it('keeps no entry of a string', () => {
+		expect(createMirror(t.Record(t.String(), item))('abc')).toEqual({})
+		expect(
+			createMirror(t.Object({ r: t.Record(t.String(), t.Number()) }))({
+				r: 'abc'
+			})
+		).toEqual({ r: {} })
+	})
+
+	it('keeps no entry of an array or null', () => {
+		const mirror = createMirror(t.Object({ r: t.Record(t.String(), item) }))
+
+		expect(mirror({ r: [{ x: 1 }] })).toEqual({ r: {} })
+		expect(mirror({ r: null })).toEqual({ r: {} })
+	})
+
+	it('still strips entries of a real record', () => {
+		expect(
+			createMirror(t.Record(t.String(), item))({ a: { x: 1, y: 2 } })
+		).toEqual({ a: { x: 1 } })
+	})
+})
+
+describe('Open object on a value nothing checked', () => {
+	const open = t.Object(
+		{ a: t.Optional(t.String()) },
+		{ additionalProperties: true }
+	)
+
+	// a string spreads into one key per character
+	it('keeps no character of a string', () => {
+		expect(createMirror(t.Object({ o: open }))({ o: 'abc' })).toEqual({
+			o: {}
+		})
+	})
+
+	it('still keeps the additional properties of an object', () => {
+		expect(
+			createMirror(t.Object({ o: open }))({ o: { a: 'a', b: 1 }, c: 1 })
+		).toEqual({ o: { a: 'a', b: 1 } })
+	})
+})

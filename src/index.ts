@@ -228,8 +228,11 @@ const handleRecord = (
 	instruction.hoist = []
 	const value = mirror(child as AnySchema, `ar${i}p`, instruction)
 
+	// a mirror may run on a value nothing checked: a string has one key per
+	// character, anything that is not a plain object has no entries to keep
 	let v =
 		`(()=>{` +
+		`if(typeof ${property}!=='object'||${property}===null||Array.isArray(${property}))return {};` +
 		`const ar${i}s=Object.keys(${property}),` +
 		`ar${i}v=Object.create(null);` +
 		`for(let i=0;i<ar${i}s.length;i++){` +
@@ -806,7 +809,9 @@ const mirrorNode = (
 
 			v += '{'
 
-			if (schema.additionalProperties) v += `...${property},`
+			// a string spreads into one key per character
+			if (schema.additionalProperties)
+				v += `...(typeof ${property}==='object'?${property}:null),`
 
 			for (let i = 0; i < keys.length; i++) {
 				const key = keys[i]
@@ -934,9 +939,7 @@ const mirrorNode = (
 
 			if (!isRoot) reference = `ar${i}s`
 
-			const guard = sanitizedItems
-				? `if(!Array.isArray(${reference}))return ${reference};`
-				: ''
+			const guard = `if(!Array.isArray(${reference}))return ${sanitizedItems ? reference : '[]'};`
 
 			if (isRoot)
 				v = `${guard}const ar${i}v=new Array(${property}.length);`
@@ -1006,8 +1009,7 @@ const mirrorNode = (
 	if (schema.type === 'array')
 		// actually Tuple
 		v = `${hoist}${v}const x=ar0v;`
-	else
-		v = `${hoist}const x=${v}\n`
+	else v = `${hoist}const x=${v}\n`
 
 	for (let i = 0; i < instruction.optionals.length; i++) {
 		const key = instruction.optionals[i]
