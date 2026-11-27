@@ -1,7 +1,10 @@
 import { Static, Type as t } from 'typebox'
 
-import { describe, it } from 'bun:test'
+import { Compile } from 'typebox/compile'
 
+import { describe, expect, it } from 'bun:test'
+
+import { createMirror } from '../src'
 import { isEqual, notEqual } from './utils'
 
 const Nullable = <T extends t.TSchema>(schema: T) => t.Union([schema, t.Null()])
@@ -287,5 +290,25 @@ describe('Union', () => {
 				b: 1
 			}
 		})
+	})
+
+	it('mirror each union member once at every level unions nest', () => {
+		let compiles = 0
+		const counting = ((...args: Parameters<typeof Compile>) => {
+			compiles++
+
+			return Compile(...args)
+		}) as typeof Compile
+
+		let shape: t.TSchema = Nullable(t.String())
+		for (let i = 0; i < 3; i++) shape = Nullable(t.Object({ child: shape }))
+
+		const mirror = createMirror(shape, { Compile: counting })
+
+		// two members a union, four unions: one check per member
+		expect(compiles).toBe(8)
+		expect(
+			mirror({ child: { child: { child: 'a', junk: 1 } } } as any)
+		).toStrictEqual({ child: { child: { child: 'a' } } })
 	})
 })
